@@ -1,11 +1,13 @@
 import os
 import torch
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
 from dataset import MobilityGraphDataset
 from model import ClassificationModel
 
-learning_rate = 1e-10
+model_name = "first_try"
+learning_rate = 1e-3
 nr_epochs = 100
 batch_size = 1
 # TODO: implement version with higher batch size (with padding)
@@ -36,7 +38,7 @@ for epoch in range(nr_epochs):
         optimizer.step()
 
         epoch_loss += loss.item()
-    print(" out example", round(out.item(), 3), round(lab.item(), 3))
+    # print(" out example", round(out.item(), 3), round(lab.item(), 3))
 
     # EVALUATE
     with torch.no_grad():
@@ -48,3 +50,10 @@ for epoch in range(nr_epochs):
     print(epoch, round(epoch_loss, 3), round(test_loss, 3))
     train_losses.append(epoch_loss)
     test_losses.append(test_loss)
+
+os.makedirs("trained_models", exist_ok=True)
+torch.save(model.state_dict(), os.path.join("trained_models", model_name))
+plt.plot(train_losses)
+plt.plot(test_losses)
+plt.savefig(os.path.join("trained_models", model_name + ".png"))
+plt.show()

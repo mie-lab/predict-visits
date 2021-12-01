@@ -3,6 +3,7 @@ import pickle
 import os
 import scipy.sparse as sp
 import numpy as np
+from torch.functional import _return_counts, norm
 
 
 class MobilityGraphDataset(torch.utils.data.Dataset):
@@ -17,6 +18,11 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
         node_feats = self.node_feature_preprocessing(node_feats)
 
+        # print(np.mean(np.absolute(node_feats[0]), axis=0))
+        # print()
+        # all_labels = [e[-1] for f in node_feats for e in f]
+        # print(np.unique(all_labels, return_counts=True))
+
         # leave some out for prediction task
         self.adjacency, self.known_node_feats = [], []
         self.predict_node_feats, self.labels = [], []
@@ -24,6 +30,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             # we use ratio_predict percent of the nodes to predict
             num_nodes_this_graph = len(node_feats[i])
             number_nodes_predict = int(num_nodes_this_graph * ratio_predict)
+            # TODO: exclude two nodes with highest number of visits --> outlier
             rand_perm = np.random.permutation(num_nodes_this_graph)
             # divide in known nodes and the ones to predict:
             predict_nodes = rand_perm[:number_nodes_predict]
@@ -49,9 +56,6 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
         self.nr_graphs = len(self.adjacency)
 
-        with open(path, "rb") as infile:
-            (self.users, adjacency_raw, node_feats) = pickle.load(infile)
-
     @staticmethod
     def adjacency_preprocessing(adjacency_matrix):
         return sparse_mx_to_torch_sparse_tensor(
@@ -71,29 +75,55 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         )
 
     @staticmethod
-    def node_feature_preprocessing(node_feats):
-        # normalize node feats
+    def node_feature_preprocessing(node_feats, dist_stats=None):
+        if dist_stats is not None:
+            dist_mean_list, dist_std_list, lab_max_list = dist_stats
+        else:
+            dist_mean_list, dist_std_list, lab_max_list = [], [], []
+        # normalize node feats:
+        # normalize the distances also per user --> we get a relation to
+        # the user's own perceived distance
+        normed_node_feats_list = []
         for i in range(len(node_feats)):
             normed_node_feats = node_feats[i].copy()
-            # normalize degree label by maximum --> we want the fraction of
-            # activity of this user
-            normed_node_feats[:, -1] = (
-                normed_node_feats[:, -1]
-                / np.sum(normed_node_feats[:, -1])
-                * 100
+            # print("prev", normed_node_feats[:10])
+            # get sign (mainly of coordinate features)
+            temp_sign = np.sign(normed_node_feats)
+            # 1) Apply log because distances and visits both follow power law
+            normed_node_feats = temp_sign * np.log(
+                np.absolute(normed_node_feats) + 1
             )
-            assert np.isclose(np.sum(normed_node_feats[:, -1]), 100)
-            # normed_node_feats[:, :-1] = normed_node_feats[:, :-1] / np.median(
-            #     np.absolute(normed_node_feats[:, :-1]), axis=0
-            # )
-            # TODO: normalization
-            # use log on distance
-            normed_node_feats[:, 0] = np.log(normed_node_feats[:, 0] + 1)
-            # normalize the distances also per user --> we get a relation to
-            # the user's own perceived distance
+            # 2) Normalize labels (#visits) by max because prediction should be
+            # time-period independent
+            if dist_stats is None:
+                dist_means = np.mean(normed_node_feats[:, :-1], axis=0)
+                dist_stds = np.std(normed_node_feats[:, :-1], axis=0)
+                lab_max = np.max(normed_node_feats[:, -1])
+                dist_mean_list.append(dist_means)
+                dist_std_list.append(dist_stds)
+                lab_max_list.append(lab_max)
+            else:
+                dist_means, dist_stds, lab_max = (
+                    dist_mean_list[i],
+                    dist_std_list[i],
+                    lab_max_list[i],
+                )
+
+            normed_node_feats[:, -1] = normed_node_feats[:, -1] / lab_max
+            # 3) normalize distances by ?? Median / mean and std
+            normed_node_feats[:, :-1] = (
+                normed_node_feats[:, :-1] - dist_means
+            ) / dist_stds
             assert node_feats[i].shape == normed_node_feats.shape
-            node_feats[i] = normed_node_feats
-        return node_feats
+            normed_node_feats_list.append(normed_node_feats)
+            # print("after", normed_node_feats[:10])
+        if dist_stats is None:
+            return normed_node_feats_list, (
+                dist_mean_list,
+                dist_std_list,
+                lab_max_list,
+            )
+        return normed_node_feats_list
 
 
 def normalize_adj(adj):
@@ -124,10 +154,10 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
 
 
 if __name__ == "__main__":
-    data = MobilityGraphDataset()
+    data = MobilityGraphDataset("data/train_data.pkl")
     counter = 0
     for (adj, nf, pnf, lab) in data:
-        print(np.max(pnf, axis=0), lab)
+        print(nf, lab)
         # print(adj.size(), nf.shape, pnf.shape, lab)
         counter += 1
         if counter > 3:

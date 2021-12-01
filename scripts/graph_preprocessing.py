@@ -122,6 +122,54 @@ def _load_graphs(study, node_importance=0, remove_loops=True):
     return nx_graphs, users
 
 
+def graph_preprocessing(graph, number_of_nodes=50):
+    # filter for the nodes with largest degrees
+    if number_of_nodes > 0:
+        sorted_dict = np.array(
+            [
+                [k, v]
+                for k, v in sorted(
+                    dict(graph.degree()).items(),
+                    key=lambda item: item[1],
+                )
+            ]
+        )
+        use_nodes = sorted_dict[-number_of_nodes:, 0]
+        graph = graph.subgraph(use_nodes)
+
+    # append unweighted adjacency matrix
+    unweighted_adj = nx.linalg.graphmatrix.adjacency_matrix(graph, weight=None)
+    # compute the weightde indegree for each node
+    weighted_adjacency = nx.linalg.graphmatrix.adjacency_matrix(
+        graph, weight="weight"
+    )
+    label = np.array(np.sum(weighted_adjacency, axis=0))[0]
+
+    # find home node
+    all_degrees = np.array(graph.out_degree())
+    home_node = all_degrees[np.argmax(all_degrees[:, 1]), 0]
+    home_center = graph.nodes[home_node]["center"]
+
+    # compute coordinate features for other nodes
+    node_loc_arr = []
+    for node_ind, node in enumerate(graph.nodes()):
+        center = graph.nodes[node]["center"]
+        dist = ti.geogr.point_distances.haversine_dist(
+            center.x, center.y, home_center.x, home_center.y
+        )[0]
+        # save distance and relative displacement vector
+        node_loc_arr.append(
+            [
+                dist,
+                center.x - home_center.x,
+                center.y - home_center.y,
+                label[node_ind],
+            ]
+        )
+    node_loc_arr = np.array(node_loc_arr)
+    return node_loc_arr, unweighted_adj
+
+
 if __name__ == "__main__":
 
     number_of_nodes = 50
@@ -134,56 +182,11 @@ if __name__ == "__main__":
 
         # extract features and adjacency from individual graphs
         for graph in graph_list:
-            # filter for the nodes with largest degrees
-            if number_of_nodes > 0:
-                sorted_dict = np.array(
-                    [
-                        [k, v]
-                        for k, v in sorted(
-                            dict(graph.degree()).items(),
-                            key=lambda item: item[1],
-                        )
-                    ]
-                )
-                use_nodes = sorted_dict[-number_of_nodes:, 0]
-                graph = graph.subgraph(use_nodes)
-
-            # append unweighted adjacency matrix
-            adjacencies.append(
-                nx.linalg.graphmatrix.adjacency_matrix(graph, weight=None)
+            graph_node_feats, graph_adjacency = graph_preprocessing(
+                graph, number_of_nodes=number_of_nodes
             )
-            # compute the weightde indegree for each node
-            weighted_adjacency = nx.linalg.graphmatrix.adjacency_matrix(
-                graph, weight="weight"
-            )
-            label = np.array(np.sum(weighted_adjacency, axis=0))[0]
-
-            # find home node
-            all_degrees = np.array(graph.out_degree())
-            home_node = all_degrees[np.argmax(all_degrees[:, 1]), 0]
-            home_center = graph.nodes[home_node]["center"]
-
-            # compute coordinate features for other nodes
-            node_loc_arr = []
-            for node_ind, node in enumerate(graph.nodes()):
-                center = graph.nodes[node]["center"]
-                dist = ti.geogr.point_distances.haversine_dist(
-                    center.x, center.y, home_center.x, home_center.y
-                )[0]
-                # save distance and relative displacement vector
-                node_loc_arr.append(
-                    [
-                        dist,
-                        center.x - home_center.x,
-                        center.y - home_center.y,
-                        label[node_ind],
-                    ]
-                )
-            node_loc_arr = np.array(node_loc_arr)
-            # print("node features size", node_loc_arr.shape)
-            # print(np.min(label))
-
-            node_feats.append(node_loc_arr)
+            node_feats.append(graph_node_feats)
+            adjacencies.append(graph_adjacency)
 
     os.makedirs("data", exist_ok=True)
 

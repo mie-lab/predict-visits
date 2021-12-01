@@ -1,6 +1,7 @@
 # Sensitive
 data/
 dblogin*
+trained_models/
 
 # Mac
 .DS_Store
