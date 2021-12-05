@@ -16,7 +16,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         with open(path, "rb") as infile:
             (self.users, adjacency_raw, node_feats) = pickle.load(infile)
 
-        node_feats = self.node_feature_preprocessing(node_feats)
+        node_feats, _ = self.node_feature_preprocessing(node_feats)
 
         # print(np.mean(np.absolute(node_feats[0]), axis=0))
         # print()
@@ -93,8 +93,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             normed_node_feats = temp_sign * np.log(
                 np.absolute(normed_node_feats) + 1
             )
-            # 2) Normalize labels (#visits) by max because prediction should be
-            # time-period independent
+            # compute stats that must be saved for the evaluation
             if dist_stats is None:
                 dist_means = np.mean(normed_node_feats[:, :-1], axis=0)
                 dist_stds = np.std(normed_node_feats[:, :-1], axis=0)
@@ -109,6 +108,8 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
                     lab_max_list[i],
                 )
 
+            # 2) Normalize labels (#visits) by max because prediction should be
+            # time-period independent
             normed_node_feats[:, -1] = normed_node_feats[:, -1] / lab_max
             # 3) normalize distances by ?? Median / mean and std
             normed_node_feats[:, :-1] = (

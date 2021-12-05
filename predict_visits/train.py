@@ -8,7 +8,7 @@ from model import ClassificationModel
 
 model_name = "first_try"
 learning_rate = 1e-3
-nr_epochs = 100
+nr_epochs = 20
 batch_size = 1
 # TODO: implement version with higher batch size (with padding)
 
