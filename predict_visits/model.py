@@ -44,8 +44,8 @@ class GraphConvolution(nn.Module):
 class ClassificationModel(nn.Module):
     def __init__(
         self,
-        input_feat_dim,
-        second_input_dim,
+        graph_feat_dim,
+        loc_feat_dim,
         adj_dim=None,
         hidden_gc_1=32,
         hidden_gc_2=64,
@@ -57,16 +57,14 @@ class ClassificationModel(nn.Module):
         super(ClassificationModel, self).__init__()
         self.adj_dim = adj_dim
         self.gc1 = GraphConvolution(
-            input_feat_dim, hidden_gc_1, dropout, act=torch.relu
+            graph_feat_dim, hidden_gc_1, dropout, act=torch.relu
         )
         self.gc2 = GraphConvolution(
             hidden_gc_1, hidden_gc_2, dropout, act=lambda x: x
         )
         # self.gc3 = GraphConvolution(hidden_dim1, hidden_dim2, dropout, act=lambda x: x)
         # decoding is simply inner product?!
-        self.dec_hidden_1 = nn.Linear(
-            hidden_gc_2 + second_input_dim, hidden_dec_1
-        )
+        self.dec_hidden_1 = nn.Linear(hidden_gc_2 + loc_feat_dim, hidden_dec_1)
         self.dec_hidden_2 = nn.Linear(hidden_dec_1, hidden_dec_2)
         self.dec_out = nn.Linear(hidden_dec_2, 1)
 
@@ -90,5 +88,5 @@ class ClassificationModel(nn.Module):
         # concat with new node
         together = torch.concat((graph_output, input_2), dim=0)
         # pass through feed forward network
-        out = self.feed_forward(together)
+        out = torch.sigmoid(self.feed_forward(together))
         return out
