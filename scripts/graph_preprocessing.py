@@ -10,7 +10,6 @@ import json
 from psycopg2 import sql
 from sqlalchemy import create_engine
 import networkx as nx
-import trackintel as ti
 from pyproj import Transformer, CRS
 
 
@@ -59,6 +58,29 @@ def read_graphs_from_postgresql(
     return AG_dict2
 
 
+def _get_db_params(study):
+    # default: full graph
+    table_name, file_name = ("full_graph", "graph_data")
+    # yumuv before and after
+    if "before" in study or "after" in study:
+        table_name, study, file_name = (
+            "before_after",
+            "yumuv_graph_rep",
+            study.split("_")[1],
+        )
+    # gc quarters
+    elif "quarter" in study:
+        table_name, study, file_name = ("quarters", "gc1", study.split("_")[1])
+    elif "dur" in study:
+        # schema: dur_4w_2017-01-02_gc1 --> timebin_size, filename, studyname
+        table_name, study, file_name = (
+            "_".join(study.split("_")[:2]),
+            study.split("_")[3],
+            study.split("_")[2],
+        )
+    return table_name, study, file_name
+
+
 def get_con():
     DBLOGIN_FILE = os.path.join("dblogin.json")
     with open(DBLOGIN_FILE) as json_file:
@@ -77,12 +99,11 @@ def get_con():
 def _load_graphs(study, node_importance=0, remove_loops=True):
     con = get_con()
     # Maybe need to use the function _get_db_params again (from graph_features)
-    table_name, file_name = ("full_graph", "graph_data")
-    # table_name, study_for_db, file_name = self._get_db_params(study)
+    table_name, study_for_db, file_name = _get_db_params(study)
     graph_dict = read_graphs_from_postgresql(
         graph_table_name=table_name,
         psycopg_con=con,
-        graph_schema_name=study,
+        graph_schema_name=study_for_db,
         file_name=file_name,
         decompress=True,
     )
@@ -123,6 +144,19 @@ def _load_graphs(study, node_importance=0, remove_loops=True):
         users.append(user_id)
         nx_graphs.append(graph_cleaned)
     return nx_graphs, users
+
+
+def make_timebin_names(study, con, use_weeks=[8]):
+    # Get all available time bins for GC1
+    # Run
+    for weeks in use_weeks:
+        cur = con.cursor()
+        # get the timebin names
+        cur.execute(f"SELECT name FROM {study}.dur_{weeks}w")
+        all_names = [
+            f"dur_{weeks}w_{name[0]}_{study}" for name in cur.fetchall()
+        ]
+    return all_names
 
 
 def graph_preprocessing(graph, number_of_nodes=0):
@@ -183,7 +217,23 @@ if __name__ == "__main__":
     number_of_nodes = 0  # get all nodes (except for isolates)
 
     users, adjacencies, node_feats = [], [], []
-    for study in ["geolife"]:  # ["gc2", "gc1", "yumuv_graph_rep"]:
+
+    TRAIN = False
+    # Train on yumuv and GC1 (divided in time bins of 8 weeks)
+    # Test on GC2 divided in time bins
+
+    con1 = get_con()
+    if TRAIN:
+        gc1_names = make_timebin_names("gc1", con1)
+        STUDIES = gc1_names + ["yumuv_graph_rep"]
+        save_name = "train"
+    else:
+        STUDIES = make_timebin_names("gc2", con1)
+        save_name = "test"
+    con1.close()
+
+    print("Getting data for studies", STUDIES)
+    for study in STUDIES:
         print(f"------ Process {study} ---------")
         graph_list, users_study = _load_graphs(study, node_importance=0)
 
@@ -201,5 +251,5 @@ if __name__ == "__main__":
 
     os.makedirs("data", exist_ok=True)
 
-    with open(os.path.join("data", "test_data.pkl"), "wb") as outfile:
+    with open(os.path.join("data", f"{save_name}_data.pkl"), "wb") as outfile:
         pickle.dump((users, adjacencies, node_feats), outfile)
