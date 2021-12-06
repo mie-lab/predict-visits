@@ -1,14 +1,17 @@
+from networkx.classes.function import nodes
 import numpy as np
 import argparse
 import psycopg2
 import pickle
 import zlib
 import os
+import warnings
 import json
 from psycopg2 import sql
 from sqlalchemy import create_engine
 import networkx as nx
 import trackintel as ti
+from pyproj import Transformer, CRS
 
 
 def read_graphs_from_postgresql(
@@ -122,8 +125,12 @@ def _load_graphs(study, node_importance=0, remove_loops=True):
     return nx_graphs, users
 
 
-def graph_preprocessing(graph, number_of_nodes=50):
-    # filter for the nodes with largest degrees
+def graph_preprocessing(graph, number_of_nodes=0):
+    """
+    Preprocess the graphs by projecting the coordinates and return only the
+    coordinates and adjacency matrix
+    """
+    # filter for the nodes with largest degrees (not done if number_of_nodes=0)
     if number_of_nodes > 0:
         sorted_dict = np.array(
             [
@@ -137,56 +144,60 @@ def graph_preprocessing(graph, number_of_nodes=50):
         use_nodes = sorted_dict[-number_of_nodes:, 0]
         graph = graph.subgraph(use_nodes)
 
-    # append unweighted adjacency matrix
-    unweighted_adj = nx.linalg.graphmatrix.adjacency_matrix(graph, weight=None)
-    # compute the weightde indegree for each node
+    # project coordinates and filter out nodes that are too far away
+    transformer = Transformer.from_crs(
+        "EPSG:4326", "EPSG:21781", always_xy=True
+    )
+    # get bounds
+    out_crs = CRS.from_epsg(21781)
+    x_min, y_min, x_max, y_max = out_crs.area_of_use.bounds
+    # iterate over nodes
+    nodes_inside_bounds = []
+    node_loc_arr = []
+    for node in graph.nodes():
+        center = graph.nodes[node]["center"]
+        if (x_min < center.x < x_max) and (y_min < center.y < y_max):
+            transformed_center = transformer.transform(center.x, center.y)
+            node_loc_arr.append(list(transformed_center))
+            nodes_inside_bounds.append(node)
+    # restrict to the nodes in switzerland
+    graph = graph.subgraph(nodes_inside_bounds)
+
+    # No nodes left
+    if len(nodes_inside_bounds) == 0:
+        warnings.warn("No nodes left in switzerland")
+        return np.zeros((0, 0)), np.zeros((0, 0))
+
+    node_loc_arr = np.array(node_loc_arr)
+
+    # compute the weighted indegree for each node
     weighted_adjacency = nx.linalg.graphmatrix.adjacency_matrix(
         graph, weight="weight"
     )
-    label = np.array(np.sum(weighted_adjacency, axis=0))[0]
 
-    # find home node
-    all_degrees = np.array(graph.out_degree())
-    home_node = all_degrees[np.argmax(all_degrees[:, 1]), 0]
-    home_center = graph.nodes[home_node]["center"]
-
-    # compute coordinate features for other nodes
-    node_loc_arr = []
-    for node_ind, node in enumerate(graph.nodes()):
-        center = graph.nodes[node]["center"]
-        dist = ti.geogr.point_distances.haversine_dist(
-            center.x, center.y, home_center.x, home_center.y
-        )[0]
-        # save distance and relative displacement vector
-        node_loc_arr.append(
-            [
-                dist,
-                center.x - home_center.x,
-                center.y - home_center.y,
-                label[node_ind],
-            ]
-        )
-    node_loc_arr = np.array(node_loc_arr)
-    return node_loc_arr, unweighted_adj
+    return node_loc_arr, weighted_adjacency
 
 
 if __name__ == "__main__":
 
-    number_of_nodes = 50
+    number_of_nodes = 0  # get all nodes (except for isolates)
 
     users, adjacencies, node_feats = [], [], []
     for study in ["geolife"]:  # ["gc2", "gc1", "yumuv_graph_rep"]:
         print(f"------ Process {study} ---------")
         graph_list, users_study = _load_graphs(study, node_importance=0)
-        users.extend([study + "_" + str(u) for u in users_study])
 
         # extract features and adjacency from individual graphs
-        for graph in graph_list:
+        for graph, u in zip(graph_list, users_study):
             graph_node_feats, graph_adjacency = graph_preprocessing(
                 graph, number_of_nodes=number_of_nodes
             )
+            if len(graph_node_feats) == 0:
+                print("No nodes left for user", u)
+                continue
             node_feats.append(graph_node_feats)
             adjacencies.append(graph_adjacency)
+            users.append(study + "_" + str(u))
 
     os.makedirs("data", exist_ok=True)
 
