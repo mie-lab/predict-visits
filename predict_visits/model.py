@@ -8,6 +8,7 @@ import torch.nn.functional as F
 class GraphConvolution(nn.Module):
     """
     Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
+    # TODO: Could be replaced by GCNConv by torch geometric module
     """
 
     def __init__(self, in_features, out_features, dropout=0.0, act=torch.relu):
@@ -69,21 +70,25 @@ class ClassificationModel(nn.Module):
         self.dec_hidden_2 = nn.Linear(hidden_dec_1, hidden_dec_2)
         self.dec_out = nn.Linear(hidden_dec_2, 1)
 
-    def encode(self, x, adj):
+    def graph_processing(self, x, adj):
+        """Pass graph through two conv layers and sum up node-wise features"""
         hidden1 = self.gc1(x, adj)
         z = self.gc2(hidden1, adj)
         z_pooled = torch.sum(z, dim=0)
         return z_pooled
 
-    def decode(self, z):
+    def feed_forward(self, z):
+        """Pass graph embedding and new feature vector through MLP"""
         hidden_dec_1 = torch.relu(self.dec_hidden_1(z))
         hidden_dec_2 = torch.relu(self.dec_hidden_2(hidden_dec_1))
         out_dec = self.dec_out(hidden_dec_2)
         return out_dec
 
     def forward(self, x, adj, input_2):
-        # feed forward for classification
-        z = self.encode(x, adj)
-        together = torch.concat((z, input_2), dim=0)
-        out = self.decode(together)
+        # feed graph through conv layers
+        graph_output = self.graph_processing(x, adj)
+        # concat with new node
+        together = torch.concat((graph_output, input_2), dim=0)
+        # pass through feed forward network
+        out = self.feed_forward(together)
         return out
