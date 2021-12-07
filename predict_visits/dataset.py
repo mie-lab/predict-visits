@@ -6,7 +6,7 @@ import scipy.sparse as sp
 import numpy as np
 from torch.functional import _return_counts, norm
 
-from utils import *
+from predict_visits.utils import *
 
 
 class MobilityGraphDataset(torch.utils.data.Dataset):
@@ -38,22 +38,25 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             (self.users, adjacency_graphs, coordinates_graphs) = pickle.load(
                 infile
             )
+        print("Number of loaded graphs", len(self.users))
 
         # Preprocess the graph to get adjacency and node features
-        node_feats, adjacency = self.graph_preprocessing(
+        node_feats, adjacency, stats = self.graph_preprocessing(
             adjacency_graphs,
             coordinates_graphs,
             quantile_lab=quantile_lab,
             nr_keep=nr_keep,
         )
-        # store the feature dimension
+        print("Number samples after preprocessing", len(node_feats))
+        # store the feature dimension and normalization stats
         self.num_feats = node_feats[0].shape[1]
+        self.stats = stats
 
         # Split into graph (adjacency and known node feats) and "new" locations
         # (predict_node_feats) with their visit numbers (labels)
         self.adjacency, self.known_node_feats = [], []
         self.predict_node_feats, self.labels = [], []
-        for i in range(len(self.users)):
+        for i in range(len(node_feats)):
             feat_vector = node_feats[i]
 
             # Leave out some nodes from the graph --> only take the ones that
@@ -95,28 +98,31 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         )
 
     @staticmethod
-    def node_feature_preprocessing(home_node, coordinates):
+    def node_feature_preprocessing(home_node, coordinates, stats=None):
         # subtract the home location
         home_center = coordinates[home_node]
         displacement = coordinates - home_center
         # normalize distance by applying log and dividing by std
         temp_sign = np.sign(displacement)
         normed_displacement = temp_sign * np.log(np.absolute(displacement) + 1)
-        normed_displacement = normed_displacement / np.std(normed_displacement)
+        if stats is None:
+            # Currently only std, but could other normalizations here
+            stats = np.std(normed_displacement)
+        normed_displacement = normed_displacement / stats
         # add other features
         # dist = ti.geogr.point_distances.haversine_dist(
         #         center.x, center.y, home_center.x, home_center.y
         #     )[0]
         # TODO
         feature_matrix = normed_displacement
-        return feature_matrix
+        return feature_matrix, stats
 
     @staticmethod
     def graph_preprocessing(
         adjacency_graphs, coordinates_graphs, quantile_lab=0.9, nr_keep=50
     ):
         """Preprocess the node features of the graph"""
-        node_feats, adjacency_matrices = [], []
+        node_feats, adjacency_matrices, stats = [], [], []
         for adjacency, coordinates in zip(adjacency_graphs, coordinates_graphs):
             home_node = get_home_node(adjacency)
 
@@ -127,14 +133,21 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
                 + np.array(np.sum(unweighted_adj, axis=1))[0]
             )
             use_nodes = np.argsort(overall_degree)[-nr_keep:]
+            # Skip this graph if it's not large enough!
+            if len(use_nodes) < 0.5 * nr_keep:
+                continue
             adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
             adjacency_matrices.append(adj_new)
 
             # 2) process node features
             # transform geographic coordinates and make feature matrix
-            feature_matrix = MobilityGraphDataset.node_feature_preprocessing(
+            (
+                feature_matrix,
+                feat_stats,
+            ) = MobilityGraphDataset.node_feature_preprocessing(
                 home_node, coordinates
             )
+            stats.append(feat_stats)
             # restrict to use_nodes and pad (to align indices with adjacency)
             feature_matrix = feature_matrix[use_nodes]
             feature_matrix = np.pad(
@@ -154,7 +167,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
                 (feature_matrix, np.expand_dims(label, 1)), axis=1
             )
             node_feats.append(concat_feats_labels)
-        return node_feats, adjacency_matrices
+        return node_feats, adjacency_matrices, stats
 
     def __len__(self):
         return self.nr_graphs
