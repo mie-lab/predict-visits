@@ -214,11 +214,12 @@ def graph_preprocessing(graph, number_of_nodes=0):
 
 if __name__ == "__main__":
 
-    number_of_nodes = 0  # get all nodes (except for isolates)
+    keep_nodes = 0  # if =0, get all nodes (except for isolates)
+    min_nodes = 30  # minimum number of nodes to save
 
     users, adjacencies, node_feats = [], [], []
 
-    TRAIN = False
+    TRAIN = True
     # Train on yumuv and GC1 (divided in time bins of 8 weeks)
     # Test on GC2 divided in time bins
 
@@ -240,10 +241,10 @@ if __name__ == "__main__":
         # extract features and adjacency from individual graphs
         for graph, u in zip(graph_list, users_study):
             graph_node_feats, graph_adjacency = graph_preprocessing(
-                graph, number_of_nodes=number_of_nodes
+                graph, number_of_nodes=keep_nodes
             )
-            if len(graph_node_feats) == 0:
-                print("No nodes left for user", u)
+            if len(graph_node_feats) < min_nodes:
+                print("No enough nodes left for user", u)
                 continue
             node_feats.append(graph_node_feats)
             adjacencies.append(graph_adjacency)

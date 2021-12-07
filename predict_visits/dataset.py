@@ -124,6 +124,8 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         """Preprocess the node features of the graph"""
         node_feats, adjacency_matrices, stats = [], [], []
         for adjacency, coordinates in zip(adjacency_graphs, coordinates_graphs):
+            # home node is the node with highest out degree BEFORE cropping the
+            # adjacency! -> for after we would have to change the code below
             home_node = get_home_node(adjacency)
 
             # 1) crop or pad adjacency matrix to the x nodes with highest degree
@@ -133,9 +135,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
                 + np.array(np.sum(unweighted_adj, axis=1))[0]
             )
             use_nodes = np.argsort(overall_degree)[-nr_keep:]
-            # Skip this graph if it's not large enough!
-            if len(use_nodes) < 0.5 * nr_keep:
-                continue
+            # crop or pad adjacency
             adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
             adjacency_matrices.append(adj_new)
 
