@@ -3,8 +3,8 @@ import torch
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
-from dataset import MobilityGraphDataset
-from model import ClassificationModel
+from predict_visits.dataset import MobilityGraphDataset
+from predict_visits.model import ClassificationModel
 
 model_name = "first_try"
 learning_rate = 1e-3

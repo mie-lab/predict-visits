@@ -7,7 +7,7 @@ import torch
 from predict_visits.model import ClassificationModel
 from predict_visits.dataset import MobilityGraphDataset
 
-from scripts.graph_preprocessing import _load_graphs, graph_preprocessing
+from graph_preprocessing import _load_graphs, graph_preprocessing
 from predict_visits.utils import get_home_node
 
 

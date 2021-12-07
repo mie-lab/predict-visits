@@ -2,6 +2,7 @@
 data/
 dblogin*
 trained_models/
+outputs/
 
 # Mac
 .DS_Store
