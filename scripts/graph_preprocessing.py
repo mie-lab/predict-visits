@@ -9,6 +9,7 @@ import json
 import psycopg2
 from tqdm import tqdm
 from shapely import wkt, wkb
+import argparse
 
 import trackintel as ti
 from future_trackintel.activity_graph import activity_graph
@@ -78,10 +79,11 @@ def download_data(study, engine, has_trips=True):
             sp, user_id_ix = filter_user_by_number_of_days(
                 sp=sp, tpls=tpls, coverage=0.7, min_nb_good_days=14
             )
-        print("\t\t drop users with bad coverage")
+        print("\t\t drop users with bad coverage: before: ", len(locs))
         tpls = tpls[tpls.user_id.isin(user_id_ix)]
         trips = trips[trips.user_id.isin(user_id_ix)]
         locs = locs[locs.user_id.isin(user_id_ix)]
+        print("after:", len(locs))
     # STUDIES WITHOUT TRIPS
     else:
         # exclude_purpose = ['Light Rail', 'Subway', 'Platform', 'Trail', 'Road', 'Train', 'Bus Line']
@@ -216,6 +218,23 @@ def project_normalize_coordinates(node_feats, transformer=None, crs=None):
             get_haversine_displacement, args=[home_center]
         )
 
+    # add_distance
+    normed_coords["distance"] = normed_coords.apply(
+        lambda x: np.sqrt(x[0] ** 2 + x[1] ** 2), axis=1
+    )
+    # TODO: add as a TEST! compare haversine dist to fake-projected coordinates
+    # print(normed_coords["distance"])
+    # test_distance = node_feats["center"].apply(
+    #     lambda point: ti.geogr.point_distances.haversine_dist(
+    #         point.x, point.y, home_center.x, home_center.y
+    #     )[0]
+    # )
+    # print(
+    #     pd.merge(
+    #         normed_coords, test_distance, left_index=True, right_index=True
+    #     )
+    # )
+
     return pd.merge(
         node_feats, normed_coords, left_index=True, right_index=True
     )
@@ -231,7 +250,7 @@ def get_adj_and_attr(graph):
     # make a dataframe with the features
     node_dicts = []
     for i, node in enumerate(list_of_nodes):
-        node_dict = graph.nodes()[node]
+        node_dict = graph.nodes[node]
         node_dict["node_id"] = node
         node_dict["id"] = i
         node_dicts.append(node_dict)
@@ -245,23 +264,56 @@ def get_adj_and_attr(graph):
     return adjacency, node_feat_df
 
 
-studies = [
-    "geolife"
-]  # ['tist_toph100', 'tist_random100'] #, 'tist_toph10', 'tist_top100', 'tist_toph100', 'tist_top500',
-# 'tist_toph500', 'tist_top1000', 'tist_toph1000']
+def getmost(val_list):
+    """Helper function to get the value that appears most often in a list"""
+    uni, counts = np.unique(val_list, return_counts=True)
+    return uni[np.argmax(counts)]
+
+
+def average_hour(datetime_list):
+    hours = [t.hour for t in datetime_list]
+    return np.mean(hours)
+
 
 epsg_for_study = {
     "gc1": "EPSG:21781",
     "gc2": "EPSG:21781",
     "yumuv": "EPSG:21781",
-    "geolife": None,  # using haversine distance then to process coordinates
+}
+has_trip_dict = {
+    "gc1": True,
+    "gc2": True,
+    "yumuv": True,
+    "geolife": True,
 }
 
-# limit = "where user_id > 1670"
-limit = ""
-single_user = False
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-n",
+        "--node_thresh",
+        type=int,
+        default=30,
+        help="Minimum number of nodes to include the graph",
+    )
+    parser.add_argument(
+        "-s",
+        "--save_name",
+        type=str,
+        default="new",
+        help="Name under which to save the data",
+    )
+    args = parser.parse_args()
+
+    min_nodes = args.node_thresh
+    save_name = save_name = f"{args.save_name}_data.pkl"
+
+    # WHICH STUDIES
+    studies = [
+        "geolife"
+    ]  # ['tist_toph100', 'tist_random100'] #, 'tist_toph10', 'tist_top100', 'tist_toph100', 'tist_top500',
+    # 'tist_toph500', 'tist_top1000', 'tist_toph1000']
 
     user_id_list, adjacency_list, node_feat_list = [], [], []
     for study in studies:
@@ -270,7 +322,8 @@ if __name__ == "__main__":
         engine = get_con()
 
         # get appropriate projection if possible
-        epsg = epsg_for_study[study]
+        # If None, using haversine distance to process coordinates
+        epsg = epsg_for_study.get(study, None)
         if epsg is not None:
             transformer = Transformer.from_crs(CRS_WGS84, epsg, always_xy=True)
             out_crs = CRS.from_epsg(epsg)
@@ -280,10 +333,14 @@ if __name__ == "__main__":
         print("CRS", transformer, out_crs)
 
         # Download data
-        (sp, locs, trips, gap_treshold) = download_data(study, engine)
+        (sp, locs, trips, gap_treshold) = download_data(
+            study, engine, has_trips=has_trip_dict.get(study, False)
+        )
 
         # Iterate over users and create graphs:
         for user_id in tqdm(locs["user_id"].unique()):
+            print()
+            print(user_id)
 
             # Filter for user
             sp_user = sp[sp["user_id"] == user_id]
@@ -306,6 +363,7 @@ if __name__ == "__main__":
                 trips_user=trips_user,
                 gap_threshold=gap_treshold,
             )
+            assert ag.user_id == user_id
             graph = ag.G
             print(
                 "activity graph size",
@@ -317,7 +375,10 @@ if __name__ == "__main__":
             graph = delete_zero_edges(graph)
             graph = get_largest_component(graph)
             graph = remove_loops(graph)
-            if graph.number_of_edges() < 3 or graph.number_of_edges() == 0:
+            if (
+                graph.number_of_nodes() < min_nodes
+                or graph.number_of_edges() == 0
+            ):
                 print(
                     f"zero edges or not enough nodes for {study} user {user_id}"
                 )
@@ -343,6 +404,13 @@ if __name__ == "__main__":
             node_feat_df = project_normalize_coordinates(
                 node_feat_df, transformer=transformer, crs=out_crs
             )
+            # preprocess purpose and started_at features
+            if "purpose" in node_feat_df.columns:
+                node_feat_df["purpose"] = node_feat_df["purpose"].apply(getmost)
+            node_feat_df["started_at"] = node_feat_df["started_at"].apply(
+                average_hour
+            )
+            node_feat_df.drop("finished_at", axis=1, inplace=True)
 
             # TODO: Add POI features based on extent
 
@@ -350,8 +418,6 @@ if __name__ == "__main__":
             user_id_list.append(f"{study}_{user_id}")
             adjacency_list.append(adjacency)
             node_feat_list.append(node_feat_df)
-            print(node_feat_df)
-            break
 
-    with open(os.path.join("data", f"geolife_new_data.pkl"), "wb") as outfile:
+    with open(os.path.join("data", save_name), "wb") as outfile:
         pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
