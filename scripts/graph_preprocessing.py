@@ -6,34 +6,24 @@ import pandas as pd
 from pyproj import Transformer, CRS
 import copy
 import json
+import geopandas as gpd
 import psycopg2
 from tqdm import tqdm
+from functools import wraps
 from shapely import wkt, wkb
 import argparse
 
 import trackintel as ti
-from future_trackintel.activity_graph import activity_graph
-from utils import (
-    get_engine,
-    get_staypoints,
-    get_locations,
-    get_triplegs,
-    get_trips,
-    filter_user_by_number_of_days,
+from graph_trackintel.activity_graph import ActivityGraph
+from graph_trackintel.graph_utils import (
+    delete_zero_edges,
+    get_largest_component,
+    remove_loops,
+    get_adj_and_attr,
 )
 
 
 CRS_WGS84 = "epsg:4326"
-
-exclude_purpose_tist = [
-    "Light Rail",
-    "Subway",
-    "Platform",
-    "Trail",
-    "Road",
-    "Train",
-    "Bus Line",
-]
 
 
 def get_con():
@@ -51,46 +41,107 @@ def get_con():
     return con
 
 
-def download_data(study, engine, has_trips=True):
+def download_data(study, engine, has_trips=True, filter_coverage=False):
     """Download data of one study from database"""
+
+    def to_datetime(df):
+        df["started_at"] = pd.to_datetime(df["started_at"], utc=True)
+        df["finished_at"] = pd.to_datetime(df["finished_at"], utc=True)
+        return df
+
+    exclude_purpose_tist = [
+        "Light Rail",
+        "Subway",
+        "Platform",
+        "Trail",
+        "Road",
+        "Train",
+        "Bus Line",
+    ]
+
     print("\t download staypoints")
-    sp = get_staypoints(study=study, engine=engine, sp_name="staypoints_extent")
+    sp = gpd.read_postgis(
+        sql="select * from {}.{}".format(study, "staypoints_extent"),
+        con=engine,
+        geom_col="geom",
+        index_col="id",
+    )
+    sp = to_datetime(sp)
 
     print("\t download locations")
     sql = f"SELECT * FROM {study}.locations_extent"
     locs = ti.io.read_locations_postgis(sql, con=engine)
-    locs["extent"] = locs["extent"].apply(lambda x: wkb.loads(bytes.fromhex(x)))
 
-    gap_treshold = None
-    trips = None
-    # STUDIES WITH TRIPS
+    # studies with trips
+    gap_treshold = 12
     if has_trips:
-        print("\t download triplegs")
-        tpls = get_triplegs(study=study, engine=engine)
         print("\t download trips")
-        trips = get_trips(study=study, engine=engine)
+        trips = ti.io.read_trips_postgis(
+            f"select * from {study}.trips", con=engine
+        )
+        if filter_coverage:
+            # get_triplegs(study=study, engine=engine)
+            print("\t download triplegs")
+            tpls = pd.read_sql(
+                sql=f"select id, user_id, started_at, finished_at from {study}.triplegs",
+                con=engine,
+                index_col="id",
+            )
+            tpls = to_datetime(tpls)
+            sp, locs, trips = filter_tracking_coverage(sp, locs, tpls, trips)
 
-        print("\t filter by tracking coverage")
-        if study == "geolife":
-            sp, user_id_ix = filter_user_by_number_of_days(
-                sp=sp, tpls=tpls, coverage=0.7, min_nb_good_days=14
-            )
-        else:
-            sp, user_id_ix = filter_user_by_number_of_days(
-                sp=sp, tpls=tpls, coverage=0.7, min_nb_good_days=14
-            )
-        print("\t\t drop users with bad coverage: before: ", len(locs))
-        tpls = tpls[tpls.user_id.isin(user_id_ix)]
-        trips = trips[trips.user_id.isin(user_id_ix)]
-        locs = locs[locs.user_id.isin(user_id_ix)]
-        print("after:", len(locs))
-    # STUDIES WITHOUT TRIPS
+    # studies without trips (Foursquare)
     else:
-        # exclude_purpose = ['Light Rail', 'Subway', 'Platform', 'Trail', 'Road', 'Train', 'Bus Line']
         sp = sp[~sp["purpose"].isin(exclude_purpose_tist)]
-        gap_treshold = 12
-        # a = pd.DataFrame(sp.groupby('purpose').size().sort_values()) TODO
+        trips = None
     return (sp, locs, trips, gap_treshold)
+
+
+def filter_tracking_coverage(sp, locs, tpls, trips):
+    """Filter out users where tracking coverage is too low"""
+    print("\t filter by tracking coverage")
+
+    def filter_user_by_number_of_days(
+        sp, tpls, coverage=0.7, min_nb_good_days=28, filter_sp=True
+    ):
+        nb_users = len(sp.user_id.unique())
+
+        sp_tpls = sp.append(tpls).sort_values(["user_id", "started_at"])
+
+        coverage_df = ti.analysis.tracking_quality.temporal_tracking_quality(
+            sp_tpls, granularity="day", max_iter=1000
+        )
+
+        good_days_count = (
+            coverage_df[coverage_df["quality"] >= coverage]
+            .groupby(by="user_id")["quality"]
+            .count()
+        )
+        good_users = good_days_count[good_days_count >= min_nb_good_days].index
+        if filter_sp:
+            sp = sp[sp.user_id.isin(good_users)]
+            print(
+                "\t\t nb users now: ",
+                len(sp.user_id.unique()),
+                "before: ",
+                nb_users,
+            )
+        return sp, good_users
+
+    if study == "geolife":
+        sp, user_id_ix = filter_user_by_number_of_days(
+            sp=sp, tpls=tpls, coverage=0.7, min_nb_good_days=14
+        )
+    else:
+        sp, user_id_ix = filter_user_by_number_of_days(
+            sp=sp, tpls=tpls, coverage=0.7, min_nb_good_days=14
+        )
+    print("\t\t drop users with bad coverage: before: ", len(locs))
+    tpls = tpls[tpls.user_id.isin(user_id_ix)]
+    trips = trips[trips.user_id.isin(user_id_ix)]
+    locs = locs[locs.user_id.isin(user_id_ix)]
+    print("after:", len(locs))
+    return sp, locs, trips
 
 
 def generate_graph(
@@ -99,7 +150,9 @@ def generate_graph(
     """
     Given the locations and staypoints OF ONE USER, generate the graph
     """
-    AG = activity_graph(
+    # print(sp_user["location_id"])
+    # print(locs_user)
+    AG = ActivityGraph(
         sp_user,
         locs_user,
         trips=trips_user,
@@ -122,31 +175,6 @@ def generate_graph(
     return AG
 
 
-def delete_zero_edges(graph):
-    edges_to_delete = [
-        (a, b) for a, b, attrs in graph.edges(data=True) if attrs["weight"] < 1
-    ]
-    if len(edges_to_delete) > 0:
-        graph.remove_edges_from(edges_to_delete)
-    return graph
-
-
-def get_largest_component(graph):
-    """get only the largest connected component:"""
-    cc = sorted(
-        nx.connected_components(graph.to_undirected()),
-        key=len,
-        reverse=True,
-    )
-    graph_cleaned = graph.subgraph(cc[0])
-    return graph_cleaned.copy()
-
-
-def remove_loops(graph):
-    graph.remove_edges_from(nx.selfloop_edges(nx.DiGraph(graph)))
-    return graph
-
-
 def keep_important_nodes(graph, number_of_nodes):
     """Reduce to the nodes with highest degree (in + out degree)"""
     sorted_dict = np.array(
@@ -166,6 +194,7 @@ def keep_important_nodes(graph, number_of_nodes):
 def to_series(func):
     """Decorator to transform tuple into a series"""
 
+    @wraps(func)
     def add_series(center, home_center):
         normed_center = func(center.x, center.y, home_center)
         return pd.Series(normed_center, index=["x_normed", "y_normed"])
@@ -205,7 +234,7 @@ def project_normalize_coordinates(node_feats, transformer=None, crs=None):
             proj_x, proj_y = transformer.transform(x, y)
             return (proj_x - home_center.x, proj_y - home_center.y)
         else:  # fall back to haversine
-            return get_haversine_displacement(x, y, home_center)
+            return get_haversine_displacement.__wrapped__(x, y, home_center)
 
     if transformer is not None:
         # get bounds
@@ -240,30 +269,6 @@ def project_normalize_coordinates(node_feats, transformer=None, crs=None):
     )
 
 
-def get_adj_and_attr(graph):
-    list_of_nodes = list(graph.nodes())
-
-    # get adjacency
-    adjacency = nx.linalg.graphmatrix.adjacency_matrix(
-        graph, nodelist=list_of_nodes
-    )
-    # make a dataframe with the features
-    node_dicts = []
-    for i, node in enumerate(list_of_nodes):
-        node_dict = graph.nodes[node]
-        node_dict["node_id"] = node
-        node_dict["id"] = i
-        node_dicts.append(node_dict)
-    node_feat_df = pd.DataFrame(node_dicts).set_index("id")
-
-    # add degrees
-    out_degree = np.array(np.sum(adjacency, axis=0)).flatten()
-    in_degree = np.array(np.sum(adjacency, axis=1)).flatten()
-    node_feat_df["in_degree"] = in_degree
-    node_feat_df["out_degree"] = out_degree
-    return adjacency, node_feat_df
-
-
 def getmost(val_list):
     """Helper function to get the value that appears most often in a list"""
     uni, counts = np.unique(val_list, return_counts=True)
@@ -276,9 +281,9 @@ def average_hour(datetime_list):
 
 
 epsg_for_study = {
-    "gc1": "EPSG:21781",
-    "gc2": "EPSG:21781",
-    "yumuv": "EPSG:21781",
+    "gc1": 21781,
+    "gc2": 21781,
+    "yumuv": 21781,
 }
 has_trip_dict = {
     "gc1": True,
@@ -310,10 +315,8 @@ if __name__ == "__main__":
     save_name = save_name = f"{args.save_name}_data.pkl"
 
     # WHICH STUDIES
-    studies = [
-        "geolife"
-    ]  # ['tist_toph100', 'tist_random100'] #, 'tist_toph10', 'tist_top100', 'tist_toph100', 'tist_top500',
-    # 'tist_toph500', 'tist_top1000', 'tist_toph1000']
+    studies = ["gc2"]
+    # ['tist_toph100', 'gc1', 'geolife]
 
     user_id_list, adjacency_list, node_feat_list = [], [], []
     for study in studies:
@@ -339,7 +342,7 @@ if __name__ == "__main__":
 
         # Iterate over users and create graphs:
         for user_id in tqdm(locs["user_id"].unique()):
-            print()
+            print("-------------------------")
             print(user_id)
 
             # Filter for user

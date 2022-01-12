@@ -2,13 +2,12 @@
 
 ## Installation:
 
-Unfortunately, to load the data from the server, a module of another repository is required. The reason is that the data on the server is pickled, and therefore the class of the graph object is needed. Run
+The predict-visits code depends on the `graph_trackintel` package. The package is available on the MIE Lab GitHub and can be installed with pip in editable mode. To do so:
 ```
-git clone https://github.com/mie-lab/mobility-graph-representation.git
-export PYTHONPATH=PYTHONPATH:$PWD/../mobility-graph-representation
+git clone https://github.com/mie-lab/graph-trackintel.git
 ```
 
-This repo can then be installed in editable mode. In an activated virtual environment, cd into this folder and run
+In an activated virtual environment, cd into this folder and run
 ```
 pip install -e .
 ```
