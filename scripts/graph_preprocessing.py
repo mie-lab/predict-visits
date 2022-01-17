@@ -25,6 +25,32 @@ from graph_trackintel.graph_utils import (
 
 CRS_WGS84 = "epsg:4326"
 
+epsg_for_study = {
+    "gc1": 21781,
+    "gc2": 21781,
+    "yumuv": 21781,
+}
+has_trip_dict = {
+    "gc1": True,
+    "gc2": True,
+    "yumuv_graph_rep": True,
+    "geolife": True,
+}
+sp_name_dict = {
+    "gc1": "staypoints_extent",
+    "gc2": "staypoints_extent",
+    "yumuv_graph_rep": "staypoints",
+    "geolife": "staypoints_extent",
+    "tist_toph100": "staypoints_extent",
+}
+locs_name_dict = {
+    "gc1": "locations_extent",
+    "gc2": "locations_extent",
+    "yumuv_graph_rep": "locations",
+    "geolife": "locations_extent",
+    "tist_toph100": "locations_extent",
+}
+
 
 def get_con():
     DBLOGIN_FILE = os.path.join("dblogin.json")
@@ -61,7 +87,7 @@ def download_data(study, engine, has_trips=True, filter_coverage=False):
 
     print("\t download staypoints")
     sp = gpd.read_postgis(
-        sql="select * from {}.{}".format(study, "staypoints_extent"),
+        sql="select * from {}.{}".format(study, sp_name_dict[study]),
         con=engine,
         geom_col="geom",
         index_col="id",
@@ -69,8 +95,8 @@ def download_data(study, engine, has_trips=True, filter_coverage=False):
     sp = to_datetime(sp)
 
     print("\t download locations")
-    sql = f"SELECT * FROM {study}.locations_extent"
-    locs = ti.io.read_locations_postgis(sql, con=engine)
+    sql = f"SELECT * FROM {study}.{locs_name_dict[study]}"
+    locs = ti.io.read_locations_postgis(sql, con=engine, index_col="id")
 
     # studies with trips
     gap_treshold = 12
@@ -159,7 +185,7 @@ def generate_graph(
         gap_threshold=gap_threshold,
     )
     # Add purpose feature
-    if study == "geolife":
+    if study == "geolife" or study == "yumuv_graph_rep":
         AG.add_node_features_from_staypoints(
             sp_user, agg_dict={"started_at": list, "finished_at": list}
         )
@@ -232,7 +258,8 @@ def project_normalize_coordinates(node_feats, transformer=None, crs=None):
     def get_projected_displacement(x, y, home_center):
         if (x_min < x < x_max) and (y_min < y < y_max):
             proj_x, proj_y = transformer.transform(x, y)
-            return (proj_x - home_center.x, proj_y - home_center.y)
+            home_x, home_y = transformer.transform(home_center.x, home_center.y)
+            return (proj_x - home_x, proj_y - home_y)
         else:  # fall back to haversine
             return get_haversine_displacement.__wrapped__(x, y, home_center)
 
@@ -271,6 +298,14 @@ def project_normalize_coordinates(node_feats, transformer=None, crs=None):
 
 def getmost(val_list):
     """Helper function to get the value that appears most often in a list"""
+    # Problem: In GC datasets is the purpose a string-list
+    if val_list[0][0] == "[":
+        val_list = [elem for val in val_list for elem in eval(val)]
+    # remove unkowns
+    val_list = [elem for elem in val_list if elem != "unknown"]
+    if len(val_list) == 0:
+        return "unknown"
+    # Select the most prevalent purpose
     uni, counts = np.unique(val_list, return_counts=True)
     return uni[np.argmax(counts)]
 
@@ -278,19 +313,6 @@ def getmost(val_list):
 def average_hour(datetime_list):
     hours = [t.hour for t in datetime_list]
     return np.mean(hours)
-
-
-epsg_for_study = {
-    "gc1": 21781,
-    "gc2": 21781,
-    "yumuv": 21781,
-}
-has_trip_dict = {
-    "gc1": True,
-    "gc2": True,
-    "yumuv": True,
-    "geolife": True,
-}
 
 
 if __name__ == "__main__":
