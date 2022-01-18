@@ -6,18 +6,24 @@ from torch.utils.data import DataLoader
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import ClassificationModel
 
-model_name = "first_try"
+# model name is desired one
+model_name = "jan22"
+# data files must exist in directory data
+train_data_name = "train_data_22"
+test_data_name = "test_data_22"
 learning_rate = 1e-3
 nr_epochs = 50
 batch_size = 1
 # TODO: implement version with higher batch size (with padding)
 
 # Train on GC1, GC2 and YUMUV
-train_data = MobilityGraphDataset(os.path.join("data", "train_data.pkl"))
+train_data = MobilityGraphDataset(
+    os.path.join("data", f"{train_data_name}.pkl")
+)
 train_loader = DataLoader(train_data, shuffle=True, batch_size=1)
 
 # Test on Geolife
-test_data = MobilityGraphDataset(os.path.join("data", "test_data.pkl"))
+test_data = MobilityGraphDataset(os.path.join("data", f"{test_data_name}.pkl"))
 test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size)
 
 # Create model - input dimension is the number of features of nodes in the graph

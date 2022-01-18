@@ -1,14 +1,12 @@
 import pickle
 import os
+import argparse
 import trackintel as ti
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from predict_visits.model import ClassificationModel
 from predict_visits.dataset import MobilityGraphDataset
-
-from graph_preprocessing import _load_graphs, graph_preprocessing
-from predict_visits.utils import get_home_node
 
 
 def regular_grid(coordinates):
@@ -39,22 +37,42 @@ def regular_grid(coordinates):
 
 
 if __name__ == "__main__":
-    model_path = "trained_models/first_try"
-    test_data_path = "data/test_data.pkl"
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-m",
+        "--model_name",
+        type=str,
+        required=True,
+        help="Name of model (must be saved in trained_models dir)",
+    )
+    parser.add_argument(
+        "-d",
+        "--data_path",
+        type=str,
+        default="data/test_data_22.pkl",
+        help="Path to test data to evaluate",
+    )
+    args = parser.parse_args()
+
+    model_name = args.model_name
+    model_path = os.path.join("trained_models", model_name)
+    test_data_path = args.data_path
     # outputs directory
     os.makedirs("outputs", exist_ok=True)
+    out_path = os.path.join("outputs", model_name)
+    os.makedirs(out_path, exist_ok=True)
 
     model = ClassificationModel(graph_feat_dim=3, loc_feat_dim=2)
     model.load_state_dict(torch.load(model_path))
 
     # load data
     with open(test_data_path, "rb") as infile:
-        (users, adjacency_graphs, coordinates_graphs) = pickle.load(infile)
+        (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
 
     # preprocess graphs
     node_feats, adjacency, stats = MobilityGraphDataset.graph_preprocessing(
         adjacency_graphs,
-        coordinates_graphs,
+        node_feat_list,
         quantile_lab=0.95,
         nr_keep=50,
     )
@@ -121,4 +139,4 @@ if __name__ == "__main__":
             np.min(grid_locations[i][:, 1]),
             np.max(grid_locations[i][:, 1]),
         )
-        plt.savefig(os.path.join("outputs", f"grid_pred_{i}.png"))
+        plt.savefig(os.path.join(out_path, f"grid_pred_{i}.png"))

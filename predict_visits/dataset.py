@@ -7,6 +7,10 @@ import numpy as np
 from torch.functional import _return_counts, norm
 
 from predict_visits.utils import *
+from predict_visits.geo_embedding.embed import (
+    std_log_embedding,
+    sinusoidal_embedding,
+)
 
 
 class MobilityGraphDataset(torch.utils.data.Dataset):
@@ -35,15 +39,13 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
         with open(path, "rb") as infile:
-            (self.users, adjacency_graphs, coordinates_graphs) = pickle.load(
-                infile
-            )
+            (self.users, adjacency_graphs, node_feat_list) = pickle.load(infile)
         print("Number of loaded graphs", len(self.users))
 
         # Preprocess the graph to get adjacency and node features
         node_feats, adjacency, stats = self.graph_preprocessing(
             adjacency_graphs,
-            coordinates_graphs,
+            node_feat_list,
             quantile_lab=quantile_lab,
             nr_keep=nr_keep,
         )
@@ -98,35 +100,32 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         )
 
     @staticmethod
-    def node_feature_preprocessing(home_node, coordinates, stats=None):
-        # subtract the home location
-        home_center = coordinates[home_node]
-        displacement = coordinates - home_center
-        # normalize distance by applying log and dividing by std
-        temp_sign = np.sign(displacement)
-        normed_displacement = temp_sign * np.log(np.absolute(displacement) + 1)
-        if stats is None:
-            # Currently only std, but could other normalizations here
-            stats = np.std(normed_displacement)
-        normed_displacement = normed_displacement / stats
-        # add other features
-        # dist = ti.geogr.point_distances.haversine_dist(
-        #         center.x, center.y, home_center.x, home_center.y
-        #     )[0]
-        # TODO
-        feature_matrix = normed_displacement
+    def node_feature_preprocessing(
+        node_feat_df, stats=None, embedding="simple"
+    ):
+        # transform geographic_coordinates
+        coords_raw = np.array(node_feat_df[["x_normed", "y_normed"]])
+        if embedding == "simple":
+            embedded_coords, stats = std_log_embedding(coords_raw, stats)
+        elif embedding == "sinus":
+            embedded_coords = sinusoidal_embedding(coords_raw, 10)
+        else:
+            raise ValueError(
+                f"Wrong embedding type {embedding}, must be simple or sinus"
+            )
+        # TODO: add other features
+        feature_matrix = embedded_coords
         return feature_matrix, stats
 
     @staticmethod
     def graph_preprocessing(
-        adjacency_graphs, coordinates_graphs, quantile_lab=0.9, nr_keep=50
+        adjacency_graphs, node_feature_dfs, quantile_lab=0.9, nr_keep=50
     ):
         """Preprocess the node features of the graph"""
         node_feats, adjacency_matrices, stats = [], [], []
-        for adjacency, coordinates in zip(adjacency_graphs, coordinates_graphs):
-            # home node is the node with highest out degree BEFORE cropping the
-            # adjacency! -> for after we would have to change the code below
-            home_node = get_home_node(adjacency)
+        for adjacency, node_feature_df in zip(
+            adjacency_graphs, node_feature_dfs
+        ):
 
             # 1) crop or pad adjacency matrix to the x nodes with highest degree
             unweighted_adj = (adjacency > 0).astype(int)
@@ -144,9 +143,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             (
                 feature_matrix,
                 feat_stats,
-            ) = MobilityGraphDataset.node_feature_preprocessing(
-                home_node, coordinates
-            )
+            ) = MobilityGraphDataset.node_feature_preprocessing(node_feature_df)
             stats.append(feat_stats)
             # restrict to use_nodes and pad (to align indices with adjacency)
             feature_matrix = feature_matrix[use_nodes]

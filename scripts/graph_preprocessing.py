@@ -334,11 +334,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     min_nodes = args.node_thresh
-    save_name = save_name = f"{args.save_name}_data.pkl"
+    save_name = f"{args.save_name}.pkl"
 
     # WHICH STUDIES
-    studies = ["gc2"]
-    # ['tist_toph100', 'gc1', 'geolife]
+    # TRAIN:
+    # studies = ["gc2", "geolife", "tist_toph100", "yumuv_graph_rep"]
+    # TEST
+    studies = ["gc1"]
 
     user_id_list, adjacency_list, node_feat_list = [], [], []
     for study in studies:
