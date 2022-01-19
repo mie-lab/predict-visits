@@ -7,6 +7,11 @@ import numpy as np
 from torch.functional import _return_counts, norm
 
 from predict_visits.utils import *
+from predict_visits.geo_embedding.embed import (
+    std_log_embedding,
+    sinusoidal_embedding,
+)
+from predict_visits.features.purpose import purpose_df_to_matrix
 
 
 class MobilityGraphDataset(torch.utils.data.Dataset):
@@ -35,15 +40,13 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
         with open(path, "rb") as infile:
-            (self.users, adjacency_graphs, coordinates_graphs) = pickle.load(
-                infile
-            )
+            (self.users, adjacency_graphs, node_feat_list) = pickle.load(infile)
         print("Number of loaded graphs", len(self.users))
 
         # Preprocess the graph to get adjacency and node features
         node_feats, adjacency, stats = self.graph_preprocessing(
             adjacency_graphs,
-            coordinates_graphs,
+            node_feat_list,
             quantile_lab=quantile_lab,
             nr_keep=nr_keep,
         )
@@ -92,63 +95,86 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         """
         Preprocess the adjacency matrix - return unweighted normalized tensor
         """
-        unweighted_adjacency = (adjacency_matrix > 0).astype(int)
+        # GCN requires an symmetric adjacancy matrix. We could check for models
+        # designed for directed graphs later on
+        symmetric_adjacency = adjacency_matrix + adjacency_matrix.T
+        unweighted_adjacency = (symmetric_adjacency > 0).astype(int)
         return sparse_mx_to_torch_sparse_tensor(
             preprocess_adj(unweighted_adjacency)
         )
 
     @staticmethod
-    def node_feature_preprocessing(home_node, coordinates, stats=None):
-        # subtract the home location
-        home_center = coordinates[home_node]
-        displacement = coordinates - home_center
-        # normalize distance by applying log and dividing by std
-        temp_sign = np.sign(displacement)
-        normed_displacement = temp_sign * np.log(np.absolute(displacement) + 1)
-        if stats is None:
-            # Currently only std, but could other normalizations here
-            stats = np.std(normed_displacement)
-        normed_displacement = normed_displacement / stats
-        # add other features
-        # dist = ti.geogr.point_distances.haversine_dist(
-        #         center.x, center.y, home_center.x, home_center.y
-        #     )[0]
-        # TODO
-        feature_matrix = normed_displacement
+    def node_feature_preprocessing(
+        node_feat_df, stats=None, embedding="simple"
+    ):
+        # transform geographic_coordinates
+        coords_raw = np.array(node_feat_df[["x_normed", "y_normed"]])
+        if embedding == "simple":
+            embedded_coords, stats = std_log_embedding(coords_raw, stats)
+        elif embedding == "sinus":
+            embedded_coords = sinusoidal_embedding(coords_raw, 10)
+        else:
+            raise ValueError(
+                f"Wrong embedding type {embedding}, must be simple or sinus"
+            )
+        # purpose feature
+        purpose_feature_arr = purpose_df_to_matrix(node_feat_df)
+        # distance feature (although already contained in coordinates)
+        distance_arr = np.expand_dims(
+            np.log(node_feat_df["distance"].values + 1), 1
+        )
+        # Average start time (average is a very bad feature, refine that later)
+        start_time_arr = np.expand_dims(node_feat_df["started_at"].values, 1)
+        # TODO: add other features
+        feature_matrix = np.hstack(
+            (embedded_coords, purpose_feature_arr, distance_arr, start_time_arr)
+        )
         return feature_matrix, stats
 
     @staticmethod
     def graph_preprocessing(
-        adjacency_graphs, coordinates_graphs, quantile_lab=0.9, nr_keep=50
+        adjacency_graphs,
+        node_feature_dfs,
+        quantile_lab=0.9,
+        nr_keep=50,
+        dist_thresh=500,
     ):
-        """Preprocess the node features of the graph"""
+        """
+        Preprocess the node features of the graph
+        dist_thresh: Maximum distance of location from home (in km)
+        """
         node_feats, adjacency_matrices, stats = [], [], []
-        for adjacency, coordinates in zip(adjacency_graphs, coordinates_graphs):
-            # home node is the node with highest out degree BEFORE cropping the
-            # adjacency! -> for after we would have to change the code below
-            home_node = get_home_node(adjacency)
+        for adjacency, node_feature_df in zip(
+            adjacency_graphs, node_feature_dfs
+        ):
+            # 1) process node features
+            # transform geographic coordinates and make feature matrix
+            (
+                feature_matrix,
+                feat_stats,
+            ) = MobilityGraphDataset.node_feature_preprocessing(node_feature_df)
+            stats.append(feat_stats)
 
-            # 1) crop or pad adjacency matrix to the x nodes with highest degree
+            # 2) crop or pad adjacency matrix to the x nodes with highest degree
             unweighted_adj = (adjacency > 0).astype(int)
             overall_degree = (
                 np.array(np.sum(unweighted_adj, axis=0))[0]
                 + np.array(np.sum(unweighted_adj, axis=1))[0]
             )
-            use_nodes = np.argsort(overall_degree)[-nr_keep:]
-            # crop or pad adjacency
+            # additionally, filter out locs w distance higher than dist_thresh
+            too_far_away = np.where(
+                node_feature_df["distance"].values > dist_thresh * 1000
+            )[0]
+            sorted_usable_nodes = [
+                ind
+                for ind in np.argsort(overall_degree)
+                if ind not in too_far_away
+            ]
+            use_nodes = sorted_usable_nodes[-nr_keep:]
+            # 2.1) crop or pad adjacency
             adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
             adjacency_matrices.append(adj_new)
-
-            # 2) process node features
-            # transform geographic coordinates and make feature matrix
-            (
-                feature_matrix,
-                feat_stats,
-            ) = MobilityGraphDataset.node_feature_preprocessing(
-                home_node, coordinates
-            )
-            stats.append(feat_stats)
-            # restrict to use_nodes and pad (to align indices with adjacency)
+            # 2.2) restrict features to use_nodes and pad
             feature_matrix = feature_matrix[use_nodes]
             feature_matrix = np.pad(
                 feature_matrix,
@@ -183,10 +209,11 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    data = MobilityGraphDataset("data/train_data.pkl")
+    data = MobilityGraphDataset("data/test_data_22.pkl")
     counter = 0
     for (adj, nf, pnf, lab) in data:
-        print(nf)
+        # check the features by observing values in pnf
+        print([round(v, 2) for v in pnf])
         print(adj.size(), nf.shape, pnf.shape, lab)
         counter += 1
         if counter > 10:

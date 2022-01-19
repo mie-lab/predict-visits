@@ -48,6 +48,7 @@ def crop_pad_sparse_matrix(adjacency, use_nodes, keep_nodes):
     """
     adj_temp = adjacency[use_nodes]
     adj_temp = adj_temp[:, use_nodes]
+    # check if we are actually below and need to pad
     diff = keep_nodes - adj_temp.shape[0]
     if diff > 0:
         from scipy.sparse import vstack, hstack
