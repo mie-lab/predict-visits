@@ -11,6 +11,7 @@ from predict_visits.geo_embedding.embed import (
     std_log_embedding,
     sinusoidal_embedding,
 )
+from predict_visits.features.purpose import purpose_df_to_matrix
 
 
 class MobilityGraphDataset(torch.utils.data.Dataset):
@@ -113,8 +114,10 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             raise ValueError(
                 f"Wrong embedding type {embedding}, must be simple or sinus"
             )
+        # purpose feature
+        purpose_feature_arr = purpose_df_to_matrix(node_feat_df)
         # TODO: add other features
-        feature_matrix = embedded_coords
+        feature_matrix = np.hstack((embedded_coords, purpose_feature_arr))
         return feature_matrix, stats
 
     @staticmethod
@@ -180,7 +183,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    data = MobilityGraphDataset("data/train_data.pkl")
+    data = MobilityGraphDataset("data/test_data_22.pkl")
     counter = 0
     for (adj, nf, pnf, lab) in data:
         print(nf)
