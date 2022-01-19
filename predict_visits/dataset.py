@@ -95,7 +95,10 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         """
         Preprocess the adjacency matrix - return unweighted normalized tensor
         """
-        unweighted_adjacency = (adjacency_matrix > 0).astype(int)
+        # GCN requires an symmetric adjacancy matrix. We could check for models
+        # designed for directed graphs later on
+        symmetric_adjacency = adjacency_matrix + adjacency_matrix.T
+        unweighted_adjacency = (symmetric_adjacency > 0).astype(int)
         return sparse_mx_to_torch_sparse_tensor(
             preprocess_adj(unweighted_adjacency)
         )
