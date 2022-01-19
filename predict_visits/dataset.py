@@ -130,33 +130,48 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
     @staticmethod
     def graph_preprocessing(
-        adjacency_graphs, node_feature_dfs, quantile_lab=0.9, nr_keep=50
+        adjacency_graphs,
+        node_feature_dfs,
+        quantile_lab=0.9,
+        nr_keep=50,
+        dist_thresh=500,
     ):
-        """Preprocess the node features of the graph"""
+        """
+        Preprocess the node features of the graph
+        dist_thresh: Maximum distance of location from home (in km)
+        """
         node_feats, adjacency_matrices, stats = [], [], []
         for adjacency, node_feature_df in zip(
             adjacency_graphs, node_feature_dfs
         ):
-
-            # 1) crop or pad adjacency matrix to the x nodes with highest degree
-            unweighted_adj = (adjacency > 0).astype(int)
-            overall_degree = (
-                np.array(np.sum(unweighted_adj, axis=0))[0]
-                + np.array(np.sum(unweighted_adj, axis=1))[0]
-            )
-            use_nodes = np.argsort(overall_degree)[-nr_keep:]
-            # crop or pad adjacency
-            adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
-            adjacency_matrices.append(adj_new)
-
-            # 2) process node features
+            # 1) process node features
             # transform geographic coordinates and make feature matrix
             (
                 feature_matrix,
                 feat_stats,
             ) = MobilityGraphDataset.node_feature_preprocessing(node_feature_df)
             stats.append(feat_stats)
-            # restrict to use_nodes and pad (to align indices with adjacency)
+
+            # 2) crop or pad adjacency matrix to the x nodes with highest degree
+            unweighted_adj = (adjacency > 0).astype(int)
+            overall_degree = (
+                np.array(np.sum(unweighted_adj, axis=0))[0]
+                + np.array(np.sum(unweighted_adj, axis=1))[0]
+            )
+            # additionally, filter out locs w distance higher than dist_thresh
+            too_far_away = np.where(
+                node_feature_df["distance"].values > dist_thresh * 1000
+            )[0]
+            sorted_usable_nodes = [
+                ind
+                for ind in np.argsort(overall_degree)
+                if ind not in too_far_away
+            ]
+            use_nodes = sorted_usable_nodes[-nr_keep:]
+            # 2.1) crop or pad adjacency
+            adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
+            adjacency_matrices.append(adj_new)
+            # 2.2) restrict features to use_nodes and pad
             feature_matrix = feature_matrix[use_nodes]
             feature_matrix = np.pad(
                 feature_matrix,
