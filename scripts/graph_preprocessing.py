@@ -296,6 +296,32 @@ def project_normalize_coordinates(node_feats, transformer=None, crs=None):
     )
 
 
+def filter_for_time_period(
+    sp_user, locs_user, part_start_date, part_end_date, trips_user=None
+):
+    # filter for current time period --> use trips if available to filter time
+    if trips_user is not None:
+        trips_user_k = trips_user[
+            (trips_user["started_at"] < part_end_date)
+            & (trips_user["started_at"] >= part_start_date)
+        ]
+        # filter staypoints by trips because we later form the graph based on the trips!
+        sp_user_k = sp_user[
+            (sp_user.index.isin(trips_user_k["origin_staypoint_id"]))
+            | (sp_user.index.isin(trips_user_k["destination_staypoint_id"]))
+        ]
+
+    else:
+        trips_user_k = None
+        sp_user_k = sorted_sp[
+            (sorted_sp["started_at"] < part_end_date)
+            & (sorted_sp["started_at"] >= part_start_date)
+        ]
+    locs_user_k = locs_user[locs_user.index.isin(sp_user_k["location_id"])]
+
+    return sp_user_k, locs_user_k, trips_user_k
+
+
 def getmost(val_list):
     """Helper function to get the value that appears most often in a list"""
     # Problem: In GC datasets is the purpose a string-list
@@ -330,6 +356,13 @@ if __name__ == "__main__":
         type=str,
         default="new",
         help="Name under which to save the data",
+    )
+    parser.add_argument(
+        "-t",
+        "--time_period",
+        type=int,
+        default=600,
+        help="Time period for one graph (in number of days)",
     )
     args = parser.parse_args()
 
@@ -382,69 +415,103 @@ if __name__ == "__main__":
             else:
                 trips_user = None
 
-            # Generate graph
-            ag = generate_graph(
-                locs_user,
-                sp_user,
-                study,
-                trips_user=trips_user,
-                gap_threshold=gap_treshold,
-            )
-            assert ag.user_id == user_id
-            graph = ag.G
-            print(
-                "activity graph size",
-                graph.number_of_nodes(),
-                graph.number_of_edges(),
-            )
+            # divide into time bin pieces
+            sorted_sp = sp_user.sort_values("started_at")
 
-            # Preprocessing graphs:
-            graph = delete_zero_edges(graph)
-            graph = get_largest_component(graph)
-            graph = remove_loops(graph)
-            if (
-                graph.number_of_nodes() < min_nodes
-                or graph.number_of_edges() == 0
-            ):
-                print(
-                    f"zero edges or not enough nodes for {study} user {user_id}"
+            min_date = sorted_sp.iloc[0].loc["started_at"]
+            max_date = sorted_sp.iloc[-1].loc["started_at"]
+            time_period = pd.Timedelta("{} d".format(args.time_period))
+            nr_parts = (max_date - min_date).days // args.time_period + 1
+            # print(user_id, min_date, max_date, nr_parts)
+            # cutoff = int(len(sorted_sp) / nr_parts)
+
+            for k in range(nr_parts):
+                # Restrict to this time period (k-th time bin)
+                part_start_date, part_end_date = (
+                    min_date + k * time_period,
+                    min_date + (k + 1) * time_period,
                 )
-                continue
+                sp_user_k, locs_user_k, trips_user_k = filter_for_time_period(
+                    sp_user,
+                    locs_user,
+                    part_start_date,
+                    part_end_date,
+                    trips_user=trips_user,
+                )
+                if len(sp_user_k) == 0:
+                    print("Warning: zero staypoints in time bin, continue")
+                    continue
+                # print(
+                #     "start and end date",
+                #     sp_user_k.iloc[0].loc["started_at"],
+                #     sp_user_k.iloc[-1].loc["started_at"],
+                # )
 
-            print(
-                "size after preprocessing",
-                graph.number_of_nodes(),
-                graph.number_of_edges(),
-            )
-            # Optionally: keep only important nodes
-            # graph = keep_important_nodes(graph, number_of_nodes)
+                # Generate graph
+                ag = generate_graph(
+                    locs_user_k,
+                    sp_user_k,
+                    study,
+                    trips_user=trips_user_k,
+                    gap_threshold=gap_treshold,
+                )
+                assert ag.user_id == user_id
+                graph = ag.G
+                # print(
+                #     "activity graph size",
+                #     graph.number_of_nodes(),
+                #     graph.number_of_edges(),
+                # )
 
-            # convert into adjacency and node feature df
-            adjacency, node_feat_df = get_adj_and_attr(graph)
-            print(
-                "adjacency and feature shape",
-                adjacency.shape,
-                node_feat_df.shape,
-            )
+                # Preprocessing graphs:
+                graph = delete_zero_edges(graph)
+                graph = get_largest_component(graph)
+                graph = remove_loops(graph)
+                if (
+                    graph.number_of_nodes() < min_nodes
+                    or graph.number_of_edges() == 0
+                ):
+                    print(
+                        f"zero edges or not enough nodes for {study} user {user_id}"
+                    )
+                    continue
 
-            # Add columns for normalized coordinates
-            node_feat_df = project_normalize_coordinates(
-                node_feat_df, transformer=transformer, crs=out_crs
-            )
-            # preprocess purpose and started_at features
-            if "purpose" in node_feat_df.columns:
-                node_feat_df["purpose"] = node_feat_df["purpose"].apply(getmost)
-            node_feat_df["started_at"] = node_feat_df["started_at"].apply(
-                average_hour
-            )
-            node_feat_df.drop("finished_at", axis=1, inplace=True)
+                # print(
+                #     "size after preprocessing",
+                #     graph.number_of_nodes(),
+                #     graph.number_of_edges(),
+                # )
+                # Optionally: keep only important nodes
+                # graph = keep_important_nodes(graph, number_of_nodes)
 
-            # TODO: Add POI features based on extent
+                # convert into adjacency and node feature df
+                adjacency, node_feat_df = get_adj_and_attr(graph)
+                print(
+                    "adjacency and feature shape",
+                    adjacency.shape,
+                    node_feat_df.shape,
+                )
 
-            # Append
-            user_id_list.append(f"{study}_{user_id}")
-            adjacency_list.append(adjacency)
-            node_feat_list.append(node_feat_df)
+                # Add columns for normalized coordinates
+                node_feat_df = project_normalize_coordinates(
+                    node_feat_df, transformer=transformer, crs=out_crs
+                )
+                # preprocess purpose and started_at features
+                if "purpose" in node_feat_df.columns:
+                    node_feat_df["purpose"] = node_feat_df["purpose"].apply(
+                        getmost
+                    )
+                node_feat_df["started_at"] = node_feat_df["started_at"].apply(
+                    average_hour
+                )
+                node_feat_df.drop("finished_at", axis=1, inplace=True)
 
-    with open(os.path.join("data", save_name), "wb") as outfile:
-        pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
+                # TODO: Add POI features based on extent
+
+                # Append
+                user_id_list.append(f"{study}_{user_id}_{k}")
+                adjacency_list.append(adjacency)
+                node_feat_list.append(node_feat_df)
+
+        with open(os.path.join("data", save_name), "wb") as outfile:
+            pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
