@@ -513,5 +513,5 @@ if __name__ == "__main__":
                 adjacency_list.append(adjacency)
                 node_feat_list.append(node_feat_df)
 
-        with open(os.path.join("data", save_name), "wb") as outfile:
-            pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
+    with open(os.path.join("data", save_name), "wb") as outfile:
+        pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
