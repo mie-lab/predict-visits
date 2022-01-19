@@ -116,8 +116,16 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             )
         # purpose feature
         purpose_feature_arr = purpose_df_to_matrix(node_feat_df)
+        # distance feature (although already contained in coordinates)
+        distance_arr = np.expand_dims(
+            np.log(node_feat_df["distance"].values + 1), 1
+        )
+        # Average start time (average is a very bad feature, refine that later)
+        start_time_arr = np.expand_dims(node_feat_df["started_at"].values, 1)
         # TODO: add other features
-        feature_matrix = np.hstack((embedded_coords, purpose_feature_arr))
+        feature_matrix = np.hstack(
+            (embedded_coords, purpose_feature_arr, distance_arr, start_time_arr)
+        )
         return feature_matrix, stats
 
     @staticmethod
@@ -186,7 +194,8 @@ if __name__ == "__main__":
     data = MobilityGraphDataset("data/test_data_22.pkl")
     counter = 0
     for (adj, nf, pnf, lab) in data:
-        print(nf)
+        # check the features by observing values in pnf
+        print([round(v, 2) for v in pnf])
         print(adj.size(), nf.shape, pnf.shape, lab)
         counter += 1
         if counter > 10:
