@@ -41,6 +41,7 @@ share/python-wheels/
 MANIFEST
 
 # VS code
+.vscode
 *.code-workspace
 
 # PyInstaller

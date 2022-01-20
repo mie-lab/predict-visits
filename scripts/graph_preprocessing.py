@@ -354,14 +354,14 @@ if __name__ == "__main__":
         "-s",
         "--save_name",
         type=str,
-        default="new",
+        default="gc_30",
         help="Name under which to save the data",
     )
     parser.add_argument(
         "-t",
         "--time_period",
         type=int,
-        default=600,
+        default=30,
         help="Time period for one graph (in number of days)",
     )
     args = parser.parse_args()
