@@ -1,5 +1,6 @@
 import os
 import pickle
+import numpy as np
 import pandas as pd
 import geopandas as gpd
 from shapely import wkb
@@ -17,7 +18,19 @@ def add_poi(feature_df, poiRep_df):
 
     new_feature_df = feature_df.merge(poiRep_df, on="location_id", how="left")
     new_feature_df.drop(columns=["extent"], inplace=True)
-    assert new_feature_df.shape[0] == feature_df.shape[0]
+
+    ## we fill in all 0s for nan
+    # get len of a sample normal poi vector
+    na_records = new_feature_df["poiRep"].isna()
+    poiVec_length = len(new_feature_df.loc[~na_records].iloc[0]["poiRep"])
+    # fill in nan records
+    new_feature_df["poiRep"] = new_feature_df["poiRep"].apply(
+        lambda x: list(np.zeros(poiVec_length)) if np.all(pd.isna(x)) else x
+    )
+
+    assert (
+        new_feature_df.dropna(subset=["poiRep"]).shape[0] == feature_df.shape[0]
+    )
 
     # return dataframe with the new columns
     return new_feature_df
@@ -33,7 +46,7 @@ def get_loc_poi_pair(
     """
     return poi vector representation of each location.
 
-    1, buffer location extent with buffer_distance
+    1. buffer location extent with buffer_distance
     2. get within poi of each location
     3. calculate poi vector representation using method={"lda", "tf_idf"}
     4. return poi_dict, with poi_dict["index"] the location_id and
@@ -64,6 +77,7 @@ def get_loc_poi_pair(
 
     # cleaning and expanding to location_id-poi_id pair
     locs.drop(columns="extent", inplace=True)
+    # explode preserves nan - preserves locs with no poi
     locs_poi = locs.explode(column="poi_within")
 
     # get the poi info from original poi df
@@ -73,6 +87,7 @@ def get_loc_poi_pair(
         right_on="id",
         how="left",
     )
+    # here we drop locs with no poi inside
     locs_poi.drop(columns=["id"], inplace=True)
 
     # get the final poi and location pairs
@@ -161,7 +176,7 @@ def _get_inside_pois(df, poi, spatial_index):
 
 
 if __name__ == "__main__":
-    dataset = "gc_30"
+    dataset = "new"
 
     with open(os.path.join("data", dataset + ".pkl"), "rb") as infile:
         (user_id_list, adjacency_list, node_feat_list) = pickle.load(infile)
