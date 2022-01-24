@@ -367,15 +367,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     min_nodes = args.node_thresh
-    save_name = f"{args.save_name}.pkl"
+    save_name = args.save_name
 
-    # WHICH STUDIES
-    # TRAIN:
-    # studies = ["gc2", "geolife", "tist_toph100", "yumuv_graph_rep"]
-    # TEST
-    studies = ["gc1"]
+    studies = ["gc1", "gc2", "geolife", "tist_toph100", "yumuv_graph_rep"]
 
-    user_id_list, adjacency_list, node_feat_list = [], [], []
     for study in studies:
         print("--------- Start {} --------------".format(study))
 
@@ -397,6 +392,7 @@ if __name__ == "__main__":
             study, engine, has_trips=has_trip_dict.get(study, False)
         )
 
+        user_id_list, adjacency_list, node_feat_list = [], [], []
         # Iterate over users and create graphs:
         for user_id in tqdm(locs["user_id"].unique()):
             print("-------------------------")
@@ -513,5 +509,7 @@ if __name__ == "__main__":
                 adjacency_list.append(adjacency)
                 node_feat_list.append(node_feat_df)
 
-    with open(os.path.join("data", save_name), "wb") as outfile:
-        pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
+        with open(
+            os.path.join("data", f"{save_name}_{study}.pkl"), "wb"
+        ) as outfile:
+            pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)

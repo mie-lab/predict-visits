@@ -9,21 +9,20 @@ from predict_visits.model import ClassificationModel
 # model name is desired one
 model_name = "jan22"
 # data files must exist in directory data
-train_data_name = "train_data_22"
-test_data_name = "test_data_22"
+train_data_files = ["t120_gc1_poi.pkl"]
+# ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl", "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
+test_data_files = ["t120_gc2_poi.pkl"]
 learning_rate = 1e-3
 nr_epochs = 50
 batch_size = 1
 # TODO: implement version with higher batch size (with padding)
 
 # Train on GC1, GC2 and YUMUV
-train_data = MobilityGraphDataset(
-    os.path.join("data", f"{train_data_name}.pkl")
-)
+train_data = MobilityGraphDataset(train_data_files)
 train_loader = DataLoader(train_data, shuffle=True, batch_size=1)
 
 # Test on Geolife
-test_data = MobilityGraphDataset(os.path.join("data", f"{test_data_name}.pkl"))
+test_data = MobilityGraphDataset(test_data_files)
 test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size)
 
 # Create model - input dimension is the number of features of nodes in the graph

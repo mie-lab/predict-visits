@@ -1,5 +1,6 @@
 import os
 import pickle
+import argparse
 import numpy as np
 import pandas as pd
 import geopandas as gpd
@@ -22,11 +23,12 @@ def add_poi(feature_df, poiRep_df):
     ## we fill in all 0s for nan
     # get len of a sample normal poi vector
     na_records = new_feature_df["poiRep"].isna()
-    poiVec_length = len(new_feature_df.loc[~na_records].iloc[0]["poiRep"])
-    # fill in nan records
-    new_feature_df["poiRep"] = new_feature_df["poiRep"].apply(
-        lambda x: list(np.zeros(poiVec_length)) if np.all(pd.isna(x)) else x
-    )
+    if any(na_records):
+        poiVec_length = len(poiRep_df.iloc[0]["poiRep"])
+        # fill in nan records
+        new_feature_df["poiRep"] = new_feature_df["poiRep"].apply(
+            lambda x: list(np.zeros(poiVec_length)) if np.all(pd.isna(x)) else x
+        )
 
     assert (
         new_feature_df.dropna(subset=["poiRep"]).shape[0] == feature_df.shape[0]
@@ -176,10 +178,24 @@ def _get_inside_pois(df, poi, spatial_index):
 
 
 if __name__ == "__main__":
-    dataset = "new"
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-d",
+        "--dataset",
+        type=str,
+        required=True,
+        help="Name of dataset to be ammended with poi information",
+    )
+    args = parser.parse_args()
+    dataset = args.dataset
 
     with open(os.path.join("data", dataset + ".pkl"), "rb") as infile:
         (user_id_list, adjacency_list, node_feat_list) = pickle.load(infile)
+
+    studies_in_pkl = [user.split("_")[0] for user in user_id_list]
+    assert (
+        len(np.unique(studies_in_pkl)) == 1
+    ), "only one study per pickle file is allowed for poi processing!"
 
     # the get_loc_poi_pair is slow:
     # if the file already exist we directly read from file
