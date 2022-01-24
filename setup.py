@@ -28,6 +28,7 @@ setup(
         "networkx",
         "pyproj",
         "matplotlib",
+        "gensim",
     ],
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",

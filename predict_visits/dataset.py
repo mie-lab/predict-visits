@@ -20,15 +20,22 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
     -> create new dataset if we want to do link prediction / other pipeline
 
     Arguments:
-        ratio_predict: Ratio of nodes per graph that is left out for training
-        quantile_lab: Only the nodes in the lower x-quantile are left out for
+        dataset_files: list of str
+            List of pkl files that are combined in this dataset, e.g.["gc1.pkl"]
+        path: str
+            Path where the dataset files are stored
+        ratio_predict: float (between 0 and 1, default 0.1)
+            Ratio of nodes per graph that is left out for training
+        quantile_lab: float (between 0 and 1, default 0.95)
+            Only the nodes in the lower x-quantile are left out for
             training (e.g. home node can not be left out)
         nr_keep: graphs are reduced to the x nodes with highest degree
     """
 
     def __init__(
         self,
-        path=os.path.join("data", "dataset.pkl"),
+        dataset_files,
+        path="data",
         ratio_predict=0.1,
         quantile_lab=0.95,
         nr_keep=50,
@@ -39,9 +46,9 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         self.nr_keep = nr_keep
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
-        with open(path, "rb") as infile:
-            (self.users, adjacency_graphs, node_feat_list) = pickle.load(infile)
-        print("Number of loaded graphs", len(self.users))
+        (self.users, adjacency_graphs, node_feat_list) = self.load(
+            dataset_files, path
+        )
 
         # Preprocess the graph to get adjacency and node features
         node_feats, adjacency, stats = self.graph_preprocessing(
@@ -90,6 +97,20 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
         self.nr_graphs = len(self.adjacency)
 
+    def load(self, dataset_files, path):
+        users, adjacency_graphs, node_feat_list = [], [], []
+        for data_file in dataset_files:
+            with open(os.path.join(path, data_file), "rb") as infile:
+                (user_this, adjacency_this, node_feats_this) = pickle.load(
+                    infile
+                )
+            users.extend(user_this)
+            adjacency_graphs.extend(adjacency_this)
+            node_feat_list.extend(node_feats_this)
+            print(f"Loaded {len(user_this)} graphs from dataset {data_file}")
+        print("Overall dataset size:", len(users))
+        return users, adjacency_graphs, node_feat_list
+
     @staticmethod
     def adjacency_preprocessing(adjacency_matrix):
         """
@@ -125,9 +146,19 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         )
         # Average start time (average is a very bad feature, refine that later)
         start_time_arr = np.expand_dims(node_feat_df["started_at"].values, 1)
-        # TODO: add other features
+
+        # POI data
+        poi_values = np.array(list(node_feat_df["poiRep"].values))
+        assert len(poi_values.shape) == 2, "Problem: NaNs in poi values"
+
         feature_matrix = np.hstack(
-            (embedded_coords, purpose_feature_arr, distance_arr, start_time_arr)
+            (
+                embedded_coords,
+                purpose_feature_arr,
+                distance_arr,
+                start_time_arr,
+                poi_values,
+            )
         )
         return feature_matrix, stats
 
@@ -209,7 +240,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    data = MobilityGraphDataset("data/test_data_22.pkl")
+    data = MobilityGraphDataset(["t120_gc1_poi.pkl", "t120_gc2_poi.pkl"])
     counter = 0
     for (adj, nf, pnf, lab) in data:
         # check the features by observing values in pnf
