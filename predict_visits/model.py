@@ -86,7 +86,7 @@ class ClassificationModel(nn.Module):
         # feed graph through conv layers
         graph_output = self.graph_processing(x, adj)
         # concat with new node
-        together = torch.concat((graph_output, input_2), dim=0)
+        together = torch.cat((graph_output, input_2), dim=0)
         # pass through feed forward network
         out = torch.sigmoid(self.feed_forward(together))
         return out
