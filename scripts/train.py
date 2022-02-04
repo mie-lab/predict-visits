@@ -1,5 +1,6 @@
 import os
 import torch
+import argparse
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
@@ -7,13 +8,23 @@ from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import ClassificationModel
 
 # model name is desired one
-model_name = "jan22"
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "-m",
+    "--model",
+    default="model",
+    type=str,
+    help="Name under which to save model",
+)
+args = parser.parse_args()
+
+model_name = args.model
 # data files must exist in directory data
-train_data_files = ["t120_gc1_poi.pkl"]
+train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
 # ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl", "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
 test_data_files = ["t120_gc2_poi.pkl"]
-learning_rate = 1e-3
-nr_epochs = 50
+learning_rate = 1e-4
+nr_epochs = 200
 batch_size = 1
 # TODO: implement version with higher batch size (with padding)
 
@@ -53,17 +64,20 @@ for epoch in range(nr_epochs):
 
         epoch_loss += loss.item()
     # print(" out example", round(out.item(), 3), round(lab.item(), 3))
+    epoch_loss = epoch_loss / i * 100  # compute average
 
     # EVALUATE
-    with torch.no_grad():
-        test_loss = 0
-        for i, (adj, node_feat, loc_feat, lab) in enumerate(test_loader):
-            out = model(node_feat[0].float(), adj[0], loc_feat[0].float())
-            test_loss += torch.sum((out - lab) ** 2).item()
+    if epoch % 5 == 0:
+        with torch.no_grad():
+            test_loss = 0
+            for i, (adj, node_feat, loc_feat, lab) in enumerate(test_loader):
+                out = model(node_feat[0].float(), adj[0], loc_feat[0].float())
+                test_loss += torch.sum((out - lab) ** 2).item()
+        test_loss = test_loss / i * 100  # compute average
 
-    print(epoch, round(epoch_loss, 3), round(test_loss, 3))
-    train_losses.append(epoch_loss)
-    test_losses.append(test_loss)
+        print(epoch, round(epoch_loss, 3), round(test_loss, 3))
+        train_losses.append(epoch_loss)
+        test_losses.append(test_loss)
 
 os.makedirs("trained_models", exist_ok=True)
 torch.save(model.state_dict(), os.path.join("trained_models", model_name))

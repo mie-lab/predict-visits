@@ -1,3 +1,4 @@
+from turtle import pos
 from scipy.sparse import coo
 import torch
 import pickle
@@ -39,11 +40,15 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         ratio_predict=0.1,
         quantile_lab=0.95,
         nr_keep=50,
+        min_label=1,
     ):
         """
         Data Loader for mobility graphs
         """
         self.nr_keep = nr_keep
+        self.ratio_predict = ratio_predict
+        self.min_label = min_label
+        self.test_nodes_per_graph = int(ratio_predict * self.nr_keep)
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
         (self.users, adjacency_graphs, node_feat_list) = self.load(
@@ -51,17 +56,24 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         )
 
         # Preprocess the graph to get adjacency and node features
-        node_feats, adjacency, stats = self.graph_preprocessing(
+        self.node_feats, self.adjacency, stats = self.graph_preprocessing(
             adjacency_graphs,
             node_feat_list,
             quantile_lab=quantile_lab,
             nr_keep=nr_keep,
         )
-        print("Number samples after preprocessing", len(node_feats))
-        # store the feature dimension and normalization stats
-        self.num_feats = node_feats[0].shape[1]
-        self.stats = stats
+        self.nr_graphs = len(self.adjacency)
 
+        # store the feature dimension and normalization stats
+        self.num_feats = self.node_feats[0].shape[1]
+        self.stats = stats
+        print("Number samples after preprocessing", len(self.node_feats))
+
+    def split_graphs_before(self, node_feats, adjacency):
+        """
+        Version 1
+        Don't select left-out nodes at runtime but rather before
+        """
         # Split into graph (adjacency and known node feats) and "new" locations
         # (predict_node_feats) with their visit numbers (labels)
         self.adjacency, self.known_node_feats = [], []
@@ -72,10 +84,13 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             # Leave out some nodes from the graph --> only take the ones that
             # are visited less frequently --> labs preprocessed such that cutoff
             # is at 1
-            possible_nodes = np.where(feat_vector[:, -1] <= 1)[0]
+            label_vector = feat_vector[:, -1]
+            possible_nodes = np.where((label_vector <= 1) & (label_vector > 0))[
+                0
+            ]
             rand_perm = np.random.permutation(possible_nodes)
             # we use ratio_predict percent of the nodes to predict
-            number_nodes_predict = int(len(feat_vector) * ratio_predict)
+            number_nodes_predict = int(len(feat_vector) * self.ratio_predict)
             # divide in known nodes and the ones to predict:
             predict_nodes = rand_perm[:number_nodes_predict]
             # known nodes are also the rest (that is not in possible_nodes)
@@ -94,8 +109,6 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             self.adjacency.append(self.adjacency_preprocessing(adj).float())
 
         self.avail_predict_nodes = [len(arr) for arr in self.labels]
-
-        self.nr_graphs = len(self.adjacency)
 
     def load(self, dataset_files, path):
         users, adjacency_graphs, node_feat_list = [], [], []
@@ -230,13 +243,43 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         return self.nr_graphs
 
     def __getitem__(self, idx):
-        rand_label_ind = np.random.permutation(self.avail_predict_nodes[idx])[0]
-        return (
-            self.adjacency[idx],
-            self.known_node_feats[idx],
-            self.predict_node_feats[idx][rand_label_ind],
-            self.labels[idx][rand_label_ind],
-        )
+        adj = self.adjacency[idx]
+        node_feat = self.node_feats[idx]
+        label_col = node_feat[:, -1]
+
+        # Divide into the known and unkown nodes
+        # TODO: min_nodes
+        possible_nodes = np.where((label_col > 0) & (label_col <= 1))[0]
+        if len(possible_nodes) == 0:
+            # if doesn't work, just pick any (should not happen often)
+            predict_node = np.random.randint(0, len(node_feat))
+        else:
+            predict_node = np.random.choice(possible_nodes)
+
+        known_nodes = [i for i in range(len(node_feat)) if i != predict_node]
+
+        # restrict feats to known nodes
+        known_node_feats = node_feat[known_nodes]
+        predict_node_feats = node_feat[predict_node, :-1]
+        label = node_feat[predict_node, -1]
+        # reduce adjacency matrix to known nodes and preprocess
+        adj = adj[known_nodes]
+        adj = self.adjacency_preprocessing(adj[:, known_nodes]).float()
+        return adj, known_node_feats, predict_node_feats, label
+
+    # Version 1: get one of the left out nodes
+    # def __len__(self):
+    #     return self.nr_graphs * self.test_nodes_per_graph
+
+    # def __getitem__(self, idx_in):
+    #     idx = idx_in // self.test_nodes_per_graph
+    #     lab_idx = idx_in % self.test_nodes_per_graph
+    #     return (
+    #         self.adjacency[idx],
+    #         self.known_node_feats[idx],
+    #         self.predict_node_feats[idx][lab_idx],
+    #         self.labels[idx][lab_idx],
+    #     )
 
 
 if __name__ == "__main__":
