@@ -105,8 +105,6 @@ def old_node_preprocessing(node_feats, dist_stats=None):
         # time-period independent
         normed_node_feats[:, -1] = normed_node_feats[:, -1] / lab_max
         # 3) normalize distances by ?? Median / mean and std
-        # TODO: subtract mean dist does not make sense because then home is
-        # at -3
         normed_node_feats[:, :-1] = (normed_node_feats[:, :-1]) / dist_stds
         assert node_feats[i].shape == normed_node_feats.shape
         normed_node_feats_list.append(normed_node_feats)

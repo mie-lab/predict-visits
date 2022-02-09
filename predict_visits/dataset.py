@@ -41,6 +41,8 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         quantile_lab=0.95,
         nr_keep=50,
         min_label=1,
+        log_labels=False,
+        **kwargs,
     ):
         """
         Data Loader for mobility graphs
@@ -48,7 +50,6 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         self.nr_keep = nr_keep
         self.ratio_predict = ratio_predict
         self.min_label = min_label
-        self.test_nodes_per_graph = int(ratio_predict * self.nr_keep)
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
         (self.users, adjacency_graphs, node_feat_list) = self.load(
@@ -61,6 +62,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             node_feat_list,
             quantile_lab=quantile_lab,
             nr_keep=nr_keep,
+            log_labels=log_labels,
         )
         self.nr_graphs = len(self.adjacency)
 
@@ -69,7 +71,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         self.stats = stats
         print("Number samples after preprocessing", len(self.node_feats))
 
-    def split_graphs_before(self, node_feats, adjacency):
+    def split_graphs_v1(self, node_feats, adjacency):
         """
         Version 1
         Don't select left-out nodes at runtime but rather before
@@ -182,6 +184,7 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         quantile_lab=0.9,
         nr_keep=50,
         dist_thresh=500,
+        log_labels=False,
     ):
         """
         Preprocess the node features of the graph
@@ -228,6 +231,8 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             # 3) Get label (number of visits)
             # get the weighted in degree (the label in the prediction task)
             label = get_label(adj_new)
+            if log_labels:
+                label = np.log(label + 1)
             # normalize label by the quantile
             label_cutoff = max([np.quantile(label, quantile_lab), 1])
             label = label / label_cutoff
@@ -248,7 +253,6 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         label_col = node_feat[:, -1]
 
         # Divide into the known and unkown nodes
-        # TODO: min_nodes
         possible_nodes = np.where((label_col > 0) & (label_col <= 1))[0]
         if len(possible_nodes) == 0:
             # if doesn't work, just pick any (should not happen often)

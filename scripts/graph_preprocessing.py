@@ -502,8 +502,6 @@ if __name__ == "__main__":
                 )
                 node_feat_df.drop("finished_at", axis=1, inplace=True)
 
-                # TODO: Add POI features based on extent
-
                 # Append
                 user_id_list.append(f"{study}_{user_id}_{k}")
                 adjacency_list.append(adjacency)

@@ -1,6 +1,7 @@
 import os
 import torch
 import argparse
+import json
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
@@ -16,6 +17,34 @@ parser.add_argument(
     type=str,
     help="Name under which to save model",
 )
+parser.add_argument(
+    "-l",
+    "--log_labels",
+    default=False,
+    type=bool,
+    help="Use logarithm on labels",
+)
+parser.add_argument(
+    "-k",
+    "--nr_keep",
+    default=50,
+    type=int,
+    help="graph size",
+)
+parser.add_argument(
+    "-r",
+    "--learning_rate",
+    default=1e-4,
+    type=float,
+    help="learning rate",
+)
+parser.add_argument(
+    "-e",
+    "--nr_epochs",
+    default=200,
+    type=int,
+    help="number of epochs",
+)
 args = parser.parse_args()
 
 model_name = args.model
@@ -23,17 +52,23 @@ model_name = args.model
 train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
 # ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl", "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
 test_data_files = ["t120_gc2_poi.pkl"]
-learning_rate = 1e-4
-nr_epochs = 200
+learning_rate = args.learning_rate
+nr_epochs = args.nr_epochs
 batch_size = 1
 # TODO: implement version with higher batch size (with padding)
+evaluate_every = 1
+
+# set up outpath
+out_path = os.path.join("trained_models", model_name)
+os.makedirs("trained_models", exist_ok=True)
+os.makedirs(out_path, exist_ok=True)
 
 # Train on GC1, GC2 and YUMUV
-train_data = MobilityGraphDataset(train_data_files)
+train_data = MobilityGraphDataset(train_data_files, **vars(args))
 train_loader = DataLoader(train_data, shuffle=True, batch_size=1)
 
 # Test on Geolife
-test_data = MobilityGraphDataset(test_data_files)
+test_data = MobilityGraphDataset(test_data_files, **vars(args))
 test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size)
 
 # Create model - input dimension is the number of features of nodes in the graph
@@ -67,7 +102,7 @@ for epoch in range(nr_epochs):
     epoch_loss = epoch_loss / i * 100  # compute average
 
     # EVALUATE
-    if epoch % 5 == 0:
+    if epoch % evaluate_every == 0:
         with torch.no_grad():
             test_loss = 0
             for i, (adj, node_feat, loc_feat, lab) in enumerate(test_loader):
@@ -79,14 +114,21 @@ for epoch in range(nr_epochs):
         train_losses.append(epoch_loss)
         test_losses.append(test_loss)
 
-os.makedirs("trained_models", exist_ok=True)
-torch.save(model.state_dict(), os.path.join("trained_models", model_name))
+# save model
+torch.save(model.state_dict(), os.path.join(out_path, "model"))
+# save config & results
+cfg = vars(args)
+cfg["train_losses"] = train_losses
+cfg["test_losses"] = test_losses
+with open(os.path.join(out_path, "cfg_res.json"), "w") as outfile:
+    json.dump(cfg, outfile)
+
+# plot losses
 fig = plt.figure()
 ax = fig.add_subplot(111)
 ax.plot(train_losses, label="Train", c="blue")
-ax.set_ylabel("Train losses")
+ax.set_ylabel("Train losses", c="blue")
 ax1 = ax.twinx()
 ax1.plot(test_losses, label="Test", c="red")
-ax1.set_ylabel("Test losses")
-plt.savefig(os.path.join("trained_models", model_name + ".png"))
-plt.show()
+ax1.set_ylabel("Test losses", c="red")
+plt.savefig(os.path.join(out_path, "loss_plot.png"))
