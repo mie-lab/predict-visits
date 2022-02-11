@@ -2,6 +2,7 @@ import os
 import torch
 import argparse
 import json
+import time
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 
@@ -79,7 +80,7 @@ model = ClassificationModel(
 )
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
-
+start_training_time = time.time()
 train_losses, test_losses = [], []
 for epoch in range(nr_epochs):
     epoch_loss = 0
@@ -120,6 +121,7 @@ torch.save(model.state_dict(), os.path.join(out_path, "model"))
 cfg = vars(args)
 cfg["train_losses"] = train_losses
 cfg["test_losses"] = test_losses
+cfg["training_time"] = time.time() - start_training_time
 with open(os.path.join(out_path, "cfg_res.json"), "w") as outfile:
     json.dump(cfg, outfile)
 
