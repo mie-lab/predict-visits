@@ -49,6 +49,13 @@ parser.add_argument(
     type=int,
     help="number of epochs",
 )
+parser.add_argument(
+    "-b",
+    "--batch_size",
+    default=1,
+    type=int,
+    help="batch size",
+)
 args = parser.parse_args()
 
 model_name = args.model
@@ -58,7 +65,7 @@ train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
 test_data_files = ["t120_gc2_poi.pkl"]
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs
-batch_size = 8
+batch_size = args.batch_size
 # TODO: implement version with higher batch size (with padding)
 evaluate_every = 1
 
