@@ -1,11 +1,9 @@
 import pickle
 import os
 import argparse
-import trackintel as ti
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from collections import defaultdict
 import torch
 from torch.utils.data import DataLoader
@@ -102,6 +100,8 @@ def evaluate(models_to_evaluate, test_data_loader):
 
 
 if __name__ == "__main__":
+    import seaborn as sns
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-m",
