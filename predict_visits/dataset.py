@@ -268,7 +268,9 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
         label = node_feat[predict_node, -1]
         # reduce adjacency matrix to known nodes and preprocess
         adj = adj[known_nodes]
-        adj = self.adjacency_preprocessing(adj[:, known_nodes]).float()
+        adj = (
+            self.adjacency_preprocessing(adj[:, known_nodes]).float().to_dense()
+        )
         return adj, known_node_feats, predict_node_feats, label
 
     # Version 1: get one of the left out nodes

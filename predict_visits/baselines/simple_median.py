@@ -20,9 +20,10 @@ class SimpleMedian:
         """
         Get closes feature vector in node_features and use their label
         """
-        assert len(node_features.size()) == 2
-        assert len(adjacency.size()) == 2
-        assert len(new_location_features.size()) == 1
-
-        avg_label = torch.median(node_features[:, -1])
+        if len(node_features.size()) == 2:
+            avg_label = torch.median(node_features[:, -1])
+        elif len(node_features.size()) == 3:
+            avg_label = torch.median(node_features[:, :, -1], dim=1).values
+        else:
+            raise ValueError()
         return avg_label

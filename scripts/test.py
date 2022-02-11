@@ -88,6 +88,19 @@ def visualize_grid(node_feats_inp, inp_adj, inp_graph_nodes):
     plt.savefig(os.path.join(out_path, f"grid_pred_{i}.png"))
 
 
+def evaluate(models_to_evaluate, test_data_loader):
+    results_by_model = defaultdict(list)
+    for i, (adj, node_feat, loc_feat, lab) in enumerate(test_data_loader):
+        # predict the label = indegree (need to process one after the other)
+        # print("------", i, lab)
+        for model_name, eval_model in models_to_evaluate.items():
+            out = eval_model(node_feat.float(), adj, loc_feat.float())
+            test_loss = torch.sum((out - lab) ** 2).item()
+            # print(model_name, out, test_loss)
+            results_by_model[model_name].append(test_loss)
+    return results_by_model
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -120,7 +133,9 @@ if __name__ == "__main__":
     # elif model_name == "simple_avg":
     #     model = SimpleMedian()
     # else:
-    model_checkpoint = torch.load(os.path.join("trained_models", model_name))
+    model_checkpoint = torch.load(
+        os.path.join("trained_models", model_name, "model")
+    )
     graph_feat_dim = model_checkpoint["gc1.weight"].size()[0]
     temp = model_checkpoint["dec_hidden_1.weight"]
     loc_feat_dim = temp.size()[1] - temp.size()[0]
@@ -144,15 +159,7 @@ if __name__ == "__main__":
     test_data_loader = DataLoader(test_dataset, shuffle=False, batch_size=1)
 
     # Evaluate
-    results_by_model = defaultdict(list)
-    for i, (adj, node_feat, loc_feat, lab) in enumerate(test_data_loader):
-        # predict the label = indegree (need to process one after the other)
-        # print("------", i, lab)
-        for model_name, eval_model in models_to_evaluate.items():
-            out = eval_model(node_feat[0].float(), adj[0], loc_feat[0].float())
-            test_loss = torch.sum((out - lab) ** 2).item()
-            # print(model_name, out, test_loss)
-            results_by_model[model_name].append(test_loss)
+    results_by_model = evaluate(models_to_evaluate, test_data_loader)
 
     print("RESUTS")
     for model_name, losses in results_by_model.items():

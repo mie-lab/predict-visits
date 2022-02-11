@@ -25,8 +25,8 @@ class GraphConvolution(nn.Module):
 
     def forward(self, inp, adj):
         inp = F.dropout(inp, self.dropout, self.training)
-        support = torch.mm(inp, self.weight)
-        output = torch.spmm(adj, support)
+        support = torch.matmul(inp, self.weight)
+        output = torch.matmul(adj, support)
         output = self.act(output)
         return output
 
@@ -72,7 +72,7 @@ class ClassificationModel(nn.Module):
         """Pass graph through two conv layers and sum up node-wise features"""
         hidden1 = self.gc1(x, adj)
         z = self.gc2(hidden1, adj)
-        z_pooled = torch.sum(z, dim=0)
+        z_pooled = torch.sum(z, dim=1)
         return z_pooled
 
     def feed_forward(self, z):
@@ -86,7 +86,36 @@ class ClassificationModel(nn.Module):
         # feed graph through conv layers
         graph_output = self.graph_processing(x, adj)
         # concat with new node
-        together = torch.cat((graph_output, input_2), dim=0)
+        together = torch.cat((graph_output, input_2), dim=1)
         # pass through feed forward network
         out = torch.sigmoid(self.feed_forward(together))
         return out
+
+
+if __name__ == "__main__":
+    model = ClassificationModel(10, 9)
+    import random
+    import numpy as np
+
+    torch.manual_seed(123)
+    torch.cuda.manual_seed(123)
+    np.random.seed(123)
+    random.seed(123)
+
+    torch.backends.cudnn.enabled = False
+    torch.backends.cudnn.deterministic = True
+    inp1 = torch.randn(1, 50, 10).repeat(3, 1, 1)
+    print(inp1.size())
+    inp2 = torch.randn(1, 50, 50).repeat(3, 1, 1)
+    inp3 = torch.randn(1, 9).repeat(3, 1)
+
+    out = model(inp1, inp2, inp3)
+
+    # from torch_geometric.nn.conv import GCNConv
+
+    # conv_test = GCNConv(10, 20)
+    # row, col, edge_attr = inp2.t().coo()
+    # edge_index = torch.stack([row, col], dim=0)
+
+    # out = conv_test(edge_index, edge_attr)
+    print(out)
