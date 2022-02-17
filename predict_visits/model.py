@@ -52,10 +52,12 @@ class ClassificationModel(nn.Module):
         hidden_dec_1=64,
         hidden_dec_2=32,
         dropout=0,
+        relative_feats=False,
     ):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
         super(ClassificationModel, self).__init__()
         self.adj_dim = adj_dim
+        self.relative_feats = relative_feats
         self.gc1 = GraphConvolution(
             graph_feat_dim, hidden_gc_1, dropout, act=torch.relu
         )
@@ -82,11 +84,16 @@ class ClassificationModel(nn.Module):
         out_dec = self.dec_out(hidden_dec_2)
         return out_dec
 
-    def forward(self, x, adj, input_2):
+    def forward(self, node_feats, adj, new_loc_feats):
+        if self.relative_feats:
+            node_feats[:, :-1] = node_feats[:, :-1] - torch.unsqueeze(
+                new_loc_feats, 0
+            )
+            # TODO: add relative one as separate input stream?
         # feed graph through conv layers
-        graph_output = self.graph_processing(x, adj)
+        graph_output = self.graph_processing(node_feats, adj)
         # concat with new node
-        together = torch.cat((graph_output, input_2), dim=0)
+        together = torch.cat((graph_output, new_loc_feats), dim=0)
         # pass through feed forward network
         out = torch.sigmoid(self.feed_forward(together))
         return out

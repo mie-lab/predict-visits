@@ -46,6 +46,13 @@ parser.add_argument(
     type=int,
     help="number of epochs",
 )
+parser.add_argument(
+    "-f",
+    "--relative_feats",
+    default=False,
+    type=bool,
+    help="represent node features relative to new node",
+)
 args = parser.parse_args()
 
 model_name = args.model
@@ -77,6 +84,7 @@ test_loader = DataLoader(test_data, shuffle=False, batch_size=batch_size)
 model = ClassificationModel(
     graph_feat_dim=train_data.num_feats,
     loc_feat_dim=train_data.num_feats - 1,
+    relative_feats=args.relative_feats,
 )
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
