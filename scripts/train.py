@@ -4,7 +4,7 @@ import argparse
 import json
 import time
 import matplotlib.pyplot as plt
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import VisitPredictionModel
@@ -96,6 +96,8 @@ model = VisitPredictionModel(
 )
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
+r3 = lambda x: round(x * 100, 2)  # round function for printing
+
 start_training_time = time.time()
 train_losses, test_losses, bl_losses = [], [], []
 for epoch in range(nr_epochs):
@@ -117,25 +119,20 @@ for epoch in range(nr_epochs):
 
         epoch_loss += loss.item()
     # print(" out example", round(out.item(), 3), round(lab.item(), 3))
-    epoch_loss = epoch_loss / train_data.len() * 100  # compute average
+    epoch_loss = epoch_loss / train_data.len()  # compute average
 
     # EVALUATE
     if epoch % evaluate_every == 0:
         with torch.no_grad():
-            results_by_model = evaluate(
+            res_models = evaluate(
                 {"trained": model, "median": SimpleMedian()}, test_data
             )
-            test_loss = results_by_model["trained"]
+            test_loss = res_models["trained"]
 
-        print(
-            epoch,
-            round(epoch_loss, 3),
-            round(test_loss, 3),
-            round(results_by_model["median"], 3),
-        )
+        print(epoch, r3(epoch_loss), r3(test_loss), r3(res_models["median"]))
         train_losses.append(epoch_loss)
         test_losses.append(test_loss)
-        bl_losses.append(results_by_model["median"])
+        bl_losses.append(res_models["median"])
 
 
 print("Finished training", time.time() - start_training_time)

@@ -321,7 +321,7 @@ class VisitPredictionModel(nn.Module):
             x = F.dropout(x, p=0.5, training=self.training)
             x = layer(x)
 
-        out = F.sigmoid(x)
+        out = torch.sigmoid(x)
         return out
 
 

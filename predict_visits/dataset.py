@@ -230,19 +230,17 @@ class MobilityGraphDataset(InMemoryDataset):
                 if ind not in too_far_away
             ]
             use_nodes = sorted_usable_nodes[-nr_keep:]
-            # 2.1) crop or pad adjacency
-            adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
-            adjacency_matrices.append(adj_new)
-            # 2.2) restrict features to use_nodes and pad
+            # 2.1) crop adjacency
+            adj_crop = adjacency[use_nodes]
+            adj_crop = adj_crop[:, use_nodes]
+
+            adjacency_matrices.append(adj_crop)
+            # 2.2) restrict features to use_nodes
             feature_matrix = feature_matrix[use_nodes]
-            feature_matrix = np.pad(
-                feature_matrix,
-                ((0, nr_keep - feature_matrix.shape[0]), (0, 0)),
-            )
 
             # 3) Get label (number of visits)
             # get the weighted in degree (the label in the prediction task)
-            label = get_label(adj_new)
+            label = get_label(adj_crop)
             if log_labels:
                 label = np.log(label + 1)
             # normalize label by the quantile
