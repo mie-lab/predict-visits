@@ -1,14 +1,13 @@
 import os
 import json
 import argparse
-import trackintel as ti
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from collections import defaultdict
 import torch
-from torch_geometric.loader import DataLoader
+from torch_geometric.data import DataLoader
 from predict_visits.model import VisitPredictionModel
 from predict_visits.dataset import MobilityGraphDataset
 
