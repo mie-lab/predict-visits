@@ -67,7 +67,7 @@ args = parser.parse_args()
 
 model_name = args.model
 # data files must exist in directory data
-train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
+train_data_files = ["t120_gc1_poi.pkl"]  # , "t120_yumuv_graph_rep_poi.pkl"]
 # ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl", "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
 test_data_files = ["t120_gc2_poi.pkl"]
 learning_rate = args.learning_rate
@@ -107,7 +107,7 @@ for epoch in range(nr_epochs):
         optimizer.zero_grad()
 
         # label is part of data.y --> visits to the new location
-        lab = data.y[:, -1]
+        lab = data.y[:, -1:]
         out = model(data)
 
         # MSE
