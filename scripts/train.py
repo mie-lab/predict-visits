@@ -5,6 +5,7 @@ import json
 import time
 import matplotlib.pyplot as plt
 from torch_geometric.data import DataLoader
+from torch_geometric.transforms import ToDevice
 
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import VisitPredictionModel
@@ -67,7 +68,7 @@ args = parser.parse_args()
 
 model_name = args.model
 # data files must exist in directory data
-train_data_files = ["t120_gc1_poi.pkl"]  # , "t120_yumuv_graph_rep_poi.pkl"]
+train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
 # ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl", "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
 test_data_files = ["t120_gc2_poi.pkl"]
 learning_rate = args.learning_rate
@@ -75,6 +76,18 @@ nr_epochs = args.nr_epochs
 batch_size = args.batch_size
 # TODO: implement version with higher batch size (with padding)
 evaluate_every = 1
+
+# use cuda:
+if torch.cuda.is_available():
+    print("CUDA available!")
+    dev = "cuda:0"
+    device = torch.device("cuda:0")
+else:
+    dev = "cpu"
+    device = torch.device("cpu")
+    print("CUDA not available!")
+
+todevice = ToDevice(device=dev)
 
 # set up outpath
 out_path = os.path.join("trained_models", model_name)
@@ -93,7 +106,7 @@ test_data = MobilityGraphDataset(test_data_files, **vars(args))
 model = VisitPredictionModel(
     train_data.num_feats,
     relative_feats=args.relative_feats,
-)
+).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
 r3 = lambda x: round(x * 100, 2)  # round function for printing
@@ -108,7 +121,7 @@ for epoch in range(nr_epochs):
 
         # label is part of data.y --> visits to the new location
         lab = data.y[:, -1:]
-        out = model(data)
+        out = model(data.to(device))
 
         # MSE
         loss = torch.sum((out - lab) ** 2)
