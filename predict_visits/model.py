@@ -277,12 +277,14 @@ class VisitPredictionModel(nn.Module):
         ff_layers: List[int] = [64, 32],
         relative_feats=False,
         adj_is_symmetric=True,
+        dropout_prob=0,
         **kwargs
     ):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
         super(VisitPredictionModel, self).__init__()
         self.norm = "sym" if adj_is_symmetric else "rw"
         self.relative_feats = relative_feats
+        self.dropout_prob = dropout_prob
 
         # graph processing
         self.graph_module = GraphResnet(
@@ -291,7 +293,8 @@ class VisitPredictionModel(nn.Module):
             K=graph_k,
             nh=graph_layers,
             norm=self.norm,
-            **kwargs
+            p=dropout_prob,
+            **kwargs,
         )
         # second input processing:
         self.embed_layer = nn.Linear(node_feat_dim - 1, inp_embed_dim)
@@ -318,7 +321,7 @@ class VisitPredictionModel(nn.Module):
         # 3. feed forward:
         for layer in self.ff_layers:
             x = F.relu(x)
-            x = F.dropout(x, p=0.5, training=self.training)
+            x = F.dropout(x, p=self.dropout_prob, training=self.training)
             x = layer(x)
 
         out = torch.sigmoid(x)
