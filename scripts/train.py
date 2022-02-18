@@ -5,7 +5,6 @@ import json
 import time
 import matplotlib.pyplot as plt
 from torch_geometric.data import DataLoader
-from torch_geometric.transforms import ToDevice
 
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import VisitPredictionModel
@@ -80,14 +79,10 @@ evaluate_every = 1
 # use cuda:
 if torch.cuda.is_available():
     print("CUDA available!")
-    dev = "cuda:0"
     device = torch.device("cuda:0")
 else:
-    dev = "cpu"
     device = torch.device("cpu")
     print("CUDA not available!")
-
-todevice = ToDevice(device=dev)
 
 # set up outpath
 out_path = os.path.join("trained_models", model_name)
