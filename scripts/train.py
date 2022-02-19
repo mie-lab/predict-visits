@@ -90,11 +90,11 @@ os.makedirs("trained_models", exist_ok=True)
 os.makedirs(out_path, exist_ok=True)
 
 # Train on GC1, GC2 and YUMUV
-train_data = MobilityGraphDataset(train_data_files, **vars(args))
+train_data = MobilityGraphDataset(train_data_files, device=device, **vars(args))
 train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 
 # Test on Geolife
-test_data = MobilityGraphDataset(test_data_files, **vars(args))
+test_data = MobilityGraphDataset(test_data_files, device=device, **vars(args))
 
 # Create model - input dimension is the number of features of nodes in the graph
 # and the number of features of the new location

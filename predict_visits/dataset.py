@@ -7,6 +7,7 @@ import scipy.sparse as sp
 import numpy as np
 from torch.functional import _return_counts, norm
 import torch_geometric
+import torch
 from torch_geometric.data import InMemoryDataset
 from torch_geometric.utils import from_scipy_sparse_matrix
 
@@ -39,6 +40,7 @@ class MobilityGraphDataset(InMemoryDataset):
     def __init__(
         self,
         dataset_files,
+        device=torch.device("cpu"),
         root="data",
         transform=None,
         pre_transform=None,
@@ -62,6 +64,7 @@ class MobilityGraphDataset(InMemoryDataset):
         self.nr_keep = nr_keep
         self.ratio_predict = ratio_predict
         self.min_label = min_label
+        self.device = device
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
         (self.users, adjacency_graphs, node_feat_list) = self.load(
@@ -293,7 +296,7 @@ class MobilityGraphDataset(InMemoryDataset):
             edge_index=edge_index,
             edge_attr=edge_attr.float(),
             y=torch.unsqueeze(predict_node_feats.float(), 0),
-        )
+        ).to(self.device)
 
         return data_sample
 

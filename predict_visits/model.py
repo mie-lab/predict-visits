@@ -300,7 +300,9 @@ class VisitPredictionModel(nn.Module):
         self.embed_layer = nn.Linear(node_feat_dim - 1, inp_embed_dim)
         # first forward layer
         first_layer_size = graph_enc_dim + inp_embed_dim
-        self.ff_layers = [nn.Linear(first_layer_size, ff_layers[0])]
+        self.ff_layers = nn.ModuleList(
+            [nn.Linear(first_layer_size, ff_layers[0])]
+        )
         for i in range(len(ff_layers) - 1):
             self.ff_layers.append(nn.Linear(ff_layers[i], ff_layers[i + 1]))
         # last layer
