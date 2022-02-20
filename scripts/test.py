@@ -1,15 +1,14 @@
-import pickle
 import os
+import json
 import argparse
-import trackintel as ti
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from collections import defaultdict
 import torch
-from torch.utils.data import DataLoader
-from predict_visits.model import ClassificationModel
+from torch_geometric.data import DataLoader
+from predict_visits.model import VisitPredictionModel
 from predict_visits.dataset import MobilityGraphDataset
 
 from predict_visits.baselines.simple_median import SimpleMedian
@@ -88,6 +87,32 @@ def visualize_grid(node_feats_inp, inp_adj, inp_graph_nodes):
     plt.savefig(os.path.join(out_path, f"grid_pred_{i}.png"))
 
 
+def evaluate(models_to_evaluate, test_data, return_mode="mean"):
+    """return_mode:  ["mean", "list"]"""
+    nr_samples = test_data.len()
+    test_data_loader = DataLoader(test_data, shuffle=False, batch_size=1)
+    # save results in dict
+    results_by_model = defaultdict(list)
+    for _, data in enumerate(test_data_loader):
+        lab = data.y[:, -1]
+        for model_name, eval_model in models_to_evaluate.items():
+            out = eval_model(data)
+            test_loss = torch.sum((out - lab) ** 2).item()
+            results_by_model[model_name].append(test_loss)
+    if return_mode == "mean":
+        # take average for each model
+        final_res = {}
+        for model_name in results_by_model.keys():
+            final_res[model_name] = (
+                np.sum(results_by_model[model_name]) / nr_samples
+            )
+        return final_res
+    elif return_mode == "list":
+        return results_by_model
+    else:
+        raise ValueError("return_mode must be one of [mean, list]")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -120,13 +145,14 @@ if __name__ == "__main__":
     # elif model_name == "simple_avg":
     #     model = SimpleMedian()
     # else:
-    model_checkpoint = torch.load(os.path.join("trained_models", model_name))
-    graph_feat_dim = model_checkpoint["gc1.weight"].size()[0]
-    temp = model_checkpoint["dec_hidden_1.weight"]
-    loc_feat_dim = temp.size()[1] - temp.size()[0]
-    model = ClassificationModel(
-        graph_feat_dim=graph_feat_dim, loc_feat_dim=loc_feat_dim
+    model_checkpoint = torch.load(
+        os.path.join("trained_models", model_name, "model"), map_location=torch.device('cpu')
     )
+    with open(
+        os.path.join("trained_models", model_name, "cfg_res.json"), "r"
+    ) as infile:
+        cfg = json.load(infile)
+    model = VisitPredictionModel(cfg["nr_features"])
     model.load_state_dict(model_checkpoint)
     model.eval()
 
@@ -141,20 +167,13 @@ if __name__ == "__main__":
 
     # just for us for comparison
     test_dataset = MobilityGraphDataset([test_data_path])
-    test_data_loader = DataLoader(test_dataset, shuffle=False, batch_size=1)
 
     # Evaluate
-    results_by_model = defaultdict(list)
-    for i, (adj, node_feat, loc_feat, lab) in enumerate(test_data_loader):
-        # predict the label = indegree (need to process one after the other)
-        # print("------", i, lab)
-        for model_name, eval_model in models_to_evaluate.items():
-            out = eval_model(node_feat[0].float(), adj[0], loc_feat[0].float())
-            test_loss = torch.sum((out - lab) ** 2).item()
-            # print(model_name, out, test_loss)
-            results_by_model[model_name].append(test_loss)
+    results_by_model = evaluate(
+        models_to_evaluate, test_dataset, return_mode="list"
+    )
 
-    print("RESUTS")
+    print("RESULTS")
     for model_name, losses in results_by_model.items():
         print(model_name, round(np.mean(losses), 5))
 
@@ -163,7 +182,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 5))
     sns.boxplot(x="variable", y="value", data=melted_df)
     plt.title("Loss by model")
-    plt.ylim(-0.03, 0.3)
+    plt.ylim(-0.01, 0.15)
     plt.ylabel("Loss per sample")
     plt.xlabel("Model")
     plt.savefig(os.path.join(out_path, f"results.png"))

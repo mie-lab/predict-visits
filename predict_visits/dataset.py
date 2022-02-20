@@ -6,6 +6,10 @@ import os
 import scipy.sparse as sp
 import numpy as np
 from torch.functional import _return_counts, norm
+import torch_geometric
+import torch
+from torch_geometric.data import InMemoryDataset
+from torch_geometric.utils import from_scipy_sparse_matrix
 
 from predict_visits.utils import *
 from predict_visits.geo_embedding.embed import (
@@ -15,7 +19,7 @@ from predict_visits.geo_embedding.embed import (
 from predict_visits.features.purpose import purpose_df_to_matrix
 
 
-class MobilityGraphDataset(torch.utils.data.Dataset):
+class MobilityGraphDataset(InMemoryDataset):
     """
     Dataset to yield graph and test nodes separately
     -> create new dataset if we want to do link prediction / other pipeline
@@ -36,24 +40,35 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         dataset_files,
-        path="data",
+        device=torch.device("cpu"),
+        root="data",
+        transform=None,
+        pre_transform=None,
         ratio_predict=0.1,
         quantile_lab=0.95,
         nr_keep=50,
         min_label=1,
         log_labels=False,
+        adj_is_unweighted=True,
+        adj_is_symmetric=True,
         **kwargs,
     ):
         """
         Data Loader for mobility graphs
         """
+        super(MobilityGraphDataset, self).__init__(
+            root, transform, pre_transform
+        )
+        self.adj_is_unweighted = adj_is_unweighted
+        self.adj_is_symmetric = adj_is_symmetric
         self.nr_keep = nr_keep
         self.ratio_predict = ratio_predict
         self.min_label = min_label
+        self.device = device
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
         (self.users, adjacency_graphs, node_feat_list) = self.load(
-            dataset_files, path
+            dataset_files, root
         )
 
         # Preprocess the graph to get adjacency and node features
@@ -218,19 +233,17 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
                 if ind not in too_far_away
             ]
             use_nodes = sorted_usable_nodes[-nr_keep:]
-            # 2.1) crop or pad adjacency
-            adj_new = crop_pad_sparse_matrix(adjacency, use_nodes, nr_keep)
-            adjacency_matrices.append(adj_new)
-            # 2.2) restrict features to use_nodes and pad
+            # 2.1) crop adjacency
+            adj_crop = adjacency[use_nodes]
+            adj_crop = adj_crop[:, use_nodes]
+
+            adjacency_matrices.append(adj_crop)
+            # 2.2) restrict features to use_nodes
             feature_matrix = feature_matrix[use_nodes]
-            feature_matrix = np.pad(
-                feature_matrix,
-                ((0, nr_keep - feature_matrix.shape[0]), (0, 0)),
-            )
 
             # 3) Get label (number of visits)
             # get the weighted in degree (the label in the prediction task)
-            label = get_label(adj_new)
+            label = get_label(adj_crop)
             if log_labels:
                 label = np.log(label + 1)
             # normalize label by the quantile
@@ -244,10 +257,10 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
             node_feats.append(concat_feats_labels)
         return node_feats, adjacency_matrices, stats
 
-    def __len__(self):
+    def len(self):
         return self.nr_graphs
 
-    def __getitem__(self, idx):
+    def get(self, idx):
         adj = self.adjacency[idx]
         node_feat = self.node_feats[idx]
         label_col = node_feat[:, -1]
@@ -262,14 +275,30 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
         known_nodes = [i for i in range(len(node_feat)) if i != predict_node]
 
-        # restrict feats to known nodes
-        known_node_feats = node_feat[known_nodes]
-        predict_node_feats = node_feat[predict_node, :-1]
-        label = node_feat[predict_node, -1]
+        # restrict feats to known nodes and convert to torch
+        known_node_feats = torch.from_numpy(node_feat[known_nodes])
+        # new node features and label
+        predict_node_feats = torch.from_numpy(node_feat[predict_node, :])
         # reduce adjacency matrix to known nodes and preprocess
         adj = adj[known_nodes]
-        adj = self.adjacency_preprocessing(adj[:, known_nodes]).float()
-        return adj, known_node_feats, predict_node_feats, label
+        adj = adj[:, known_nodes]
+
+        if self.adj_is_symmetric:
+            adj = adj + adj.T
+        if self.adj_is_unweighted:
+            adj = (adj > 0).astype(int)
+        # adj = self.adjacency_preprocessing(adj[:, known_nodes]).float()
+        # Todo: preprocessing!
+        edge_index, edge_attr = from_scipy_sparse_matrix(adj)
+
+        data_sample = torch_geometric.data.Data(
+            x=known_node_feats.float(),
+            edge_index=edge_index,
+            edge_attr=edge_attr.float(),
+            y=torch.unsqueeze(predict_node_feats.float(), 0),
+        ).to(self.device)
+
+        return data_sample
 
     # Version 1: get one of the left out nodes
     # def __len__(self):
@@ -287,12 +316,38 @@ class MobilityGraphDataset(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    data = MobilityGraphDataset(["t120_gc1_poi.pkl", "t120_gc2_poi.pkl"])
-    counter = 0
-    for (adj, nf, pnf, lab) in data:
-        # check the features by observing values in pnf
-        print([round(v, 2) for v in pnf])
-        print(adj.size(), nf.shape, pnf.shape, lab)
-        counter += 1
-        if counter > 10:
-            break
+    dataset = MobilityGraphDataset(["t120_gc2_poi.pkl"])
+    # test = dataset[0]
+    # print(test.x.size())
+    # print(test.y.size())
+    # print(test.edge_index.size())
+    # print(test.edge_attr.size())
+
+    print("-----------")
+    from torch_geometric.nn.conv import GCNConv, ChebConv
+
+    conv_test = ChebConv(25, 1, 3)
+    from predict_visits.baselines.simple_median import SimpleMedian
+
+    simple_median = SimpleMedian()
+
+    loader = torch_geometric.loader.DataLoader(dataset, batch_size=2)
+    # print(loader.len())
+    print(len(loader.dataset))
+
+    # counter = 0
+    # for test in loader:
+    #     print(test.x.size())
+    #     print(test.y.size())
+    #     print(test.edge_index.size())
+    #     print(test.edge_attr.size())
+    #     # print(test.edge_index)
+    #     # print(test.edge_attr)
+    #     print("BATCH", test.batch)
+    #     out = conv_test(test.x, test.edge_index, edge_weight=test.edge_attr)
+    #     print("OUT", out.size())
+    #     med = simple_median(test)
+    #     print("median", med)
+    #     counter += 1
+    #     if counter > 3:
+    #         break

@@ -13,23 +13,21 @@ class KNN:
         self.weighted = weighted
         # TODO: distinguish geographically close in space / normalize features!
 
-    def __call__(
-        self,
-        node_features: torch.tensor,
-        adjacency: torch.tensor,
-        new_location_features: torch.tensor,
-    ):
+    def __call__(self, data):
         """
         Get closes feature vector in node_features and use their label
         """
-        assert len(node_features.size()) == 2
-        assert len(adjacency.size()) == 2
-        assert len(new_location_features.size()) == 1
+        node_features = data.x
+        assert len(node_features.shape) == 2
+        # assert that only one batch
+        assert len(torch.unique(data.batch)) == 1
+        assert len(data.y.shape) == 2
+        new_location_features = data.y[:, :-1]
 
         feats_wo_labels = node_features[:, :-1]
         distance_to_feats = torch.mean(
             (feats_wo_labels - new_location_features) ** 2, axis=1
-        ).detach()
+        )
         knn_inds = torch.argsort(distance_to_feats)[: self.k]
         if self.weighted:
             knn_dist = distance_to_feats[knn_inds]

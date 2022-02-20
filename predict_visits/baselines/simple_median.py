@@ -11,18 +11,14 @@ class SimpleMedian:
     def __init__(self):
         pass
 
-    def __call__(
-        self,
-        node_features: torch.tensor,
-        adjacency: torch.tensor,
-        new_location_features: torch.tensor,
-    ):
+    def __call__(self, data):
         """
         Get closes feature vector in node_features and use their label
         """
-        assert len(node_features.size()) == 2
-        assert len(adjacency.size()) == 2
-        assert len(new_location_features.size()) == 1
+        node_features = data.x
+        assert len(node_features.shape) == 2
+        # assert that only one batch
+        assert len(torch.unique(data.batch)) == 1
 
         avg_label = torch.median(node_features[:, -1])
         return avg_label
