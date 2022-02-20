@@ -146,7 +146,7 @@ if __name__ == "__main__":
     #     model = SimpleMedian()
     # else:
     model_checkpoint = torch.load(
-        os.path.join("trained_models", model_name, "model")
+        os.path.join("trained_models", model_name, "model"), map_location=torch.device('cpu')
     )
     with open(
         os.path.join("trained_models", model_name, "cfg_res.json"), "r"
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 5))
     sns.boxplot(x="variable", y="value", data=melted_df)
     plt.title("Loss by model")
-    plt.ylim(-0.03, 0.3)
+    plt.ylim(-0.01, 0.15)
     plt.ylabel("Loss per sample")
     plt.xlabel("Model")
     plt.savefig(os.path.join(out_path, f"results.png"))
