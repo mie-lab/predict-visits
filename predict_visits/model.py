@@ -275,7 +275,6 @@ class VisitPredictionModel(nn.Module):
         graph_k: int = 4,
         inp_embed_dim=64,
         ff_layers: List[int] = [64, 32],
-        relative_feats=False,
         adj_is_symmetric=True,
         dropout_prob=0,
         **kwargs
@@ -283,7 +282,6 @@ class VisitPredictionModel(nn.Module):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
         super(VisitPredictionModel, self).__init__()
         self.norm = "sym" if adj_is_symmetric else "rw"
-        self.relative_feats = relative_feats
         self.dropout_prob = dropout_prob
 
         # graph processing

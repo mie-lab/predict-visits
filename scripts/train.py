@@ -52,8 +52,7 @@ parser.add_argument(
 parser.add_argument(
     "-f",
     "--relative_feats",
-    default=False,
-    type=bool,
+    action="store_true",
     help="represent node features relative to new node",
 )
 parser.add_argument(

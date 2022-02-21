@@ -51,6 +51,7 @@ class MobilityGraphDataset(InMemoryDataset):
         log_labels=False,
         adj_is_unweighted=True,
         adj_is_symmetric=True,
+        relative_feats=False,
         **kwargs,
     ):
         """
@@ -59,6 +60,7 @@ class MobilityGraphDataset(InMemoryDataset):
         super(MobilityGraphDataset, self).__init__(
             root, transform, pre_transform
         )
+        self.relative_feats = relative_feats
         self.adj_is_unweighted = adj_is_unweighted
         self.adj_is_symmetric = adj_is_symmetric
         self.nr_keep = nr_keep
@@ -287,15 +289,23 @@ class MobilityGraphDataset(InMemoryDataset):
             adj = adj + adj.T
         if self.adj_is_unweighted:
             adj = (adj > 0).astype(int)
-        # adj = self.adjacency_preprocessing(adj[:, known_nodes]).float()
-        # Todo: preprocessing!
+        # transform to index & attr
         edge_index, edge_attr = from_scipy_sparse_matrix(adj)
+
+        # get features of new (test) location
+        label_node_feats = torch.unsqueeze(predict_node_feats.float(), 0)
+
+        # transform node features to relative node features wrt new loc
+        if self.relative_feats:
+            known_node_feats[:, :-1] = (
+                known_node_feats[:, :-1] - label_node_feats[:, :-1]
+            )
 
         data_sample = torch_geometric.data.Data(
             x=known_node_feats.float(),
             edge_index=edge_index,
             edge_attr=edge_attr.float(),
-            y=torch.unsqueeze(predict_node_feats.float(), 0),
+            y=label_node_feats,
         ).to(self.device)
 
         return data_sample
