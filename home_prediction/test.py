@@ -36,8 +36,7 @@ def top_k(node_feats, k=3, mode="mean"):
         "in_degree", ascending=False
     )
     # print(wo_home[["x_normed", "y_normed", "in_degree"]])
-    other_locs = np.array(wo_home[["x_normed", "y_normed"]])[:k]
-    most_visited = np.mean(other_locs, axis=0)
+    most_visited = np.array(wo_home[["x_normed", "y_normed"]])[:k]
     if mode == "median" and k <= 3:
         print("warning: median only makes sense for k>3")
     if mode == "median" and k > 3:
@@ -45,6 +44,56 @@ def top_k(node_feats, k=3, mode="mean"):
     elif mode == "mean":
         res = np.mean(most_visited, axis=0)
     return np.linalg.norm(res)
+
+
+def random_forest(study, cfg, load_rf=False):
+    import sklearn
+    from sklearn.ensemble import RandomForestRegressor
+
+    rf_save_path = os.path.join(
+        "trained_models",
+        "home_prediction",
+        f"{study}_rf.pkl",
+    )
+    if not os.path.exists(rf_save_path):
+        load_rf = False
+    test_data_files = [f"t120_{study}_poi.pkl"]
+    test_dataset = HomeLocationDataset(test_data_files, **cfg)
+
+    if load_rf:
+        with open(rf_save_path, "rb") as outfile:
+            rf = pickle.load(outfile)
+    else:
+        # train from scratch
+        train_study = "gc2" if study == "gc1" else "gc1"
+        train_data_files = [
+            f"t120_{train_study}_poi.pkl",
+            "t120_yumuv_graph_rep_poi.pkl",
+        ]
+        train_dataset = HomeLocationDataset(train_data_files, **cfg)
+
+        train_x = np.array([d[0].numpy() for d in train_dataset])
+        train_y = np.array([d[1].numpy() for d in train_dataset])
+        train_x = train_x.reshape((len(train_x), -1))
+        print("Input to RF", train_x.shape, train_y.shape)
+        rf = RandomForestRegressor(n_estimators=100, random_state=0)
+        rf.fit(train_x, train_y)
+
+        # save RF
+        with open(rf_save_path, "wb") as outfile:
+            pickle.dump(rf, outfile)
+
+    test_x = np.array([d[0].numpy() for d in test_dataset])
+    test_x = test_x.reshape((len(test_x), -1))
+    test_ref_points = np.array([d[2].numpy() for d in test_dataset])
+    pred_y = rf.predict(test_x)
+
+    to_coords = inverse_coord_normalization(pred_y).reshape(-1, 3, 2)
+    absolute_coord_error = np.mean(to_coords + test_ref_points, axis=1)
+    test_distance = [
+        np.linalg.norm(coord_err) for coord_err in absolute_coord_error
+    ]
+    return test_distance
 
 
 def evaluate(model, test_loader, criterion=torch.nn.MSELoss()):
@@ -67,8 +116,8 @@ def evaluate(model, test_loader, criterion=torch.nn.MSELoss()):
 
 
 if __name__ == "__main__":
-    study = "gc2"
-    eval_model = "gc2_1"
+    study = "gc1"
+    eval_model = "gc1_1"
 
     eval_model_path = os.path.join(
         "trained_models", "home_prediction", eval_model
@@ -100,6 +149,8 @@ if __name__ == "__main__":
     with torch.no_grad():
         _, eval_model_distances = evaluate(model, test_loader)
 
+    rf_distances = random_forest(study, cfg, load_rf=True)
+
     # load data for baselines
     with open(
         os.path.join("data", f"t120_{study}.pkl"),
@@ -120,23 +171,30 @@ if __name__ == "__main__":
     err_top5_median = [
         top_k(node_feats, k=5, mode="median") for node_feats in node_feat_list
     ]
+    err_top10_median = [
+        top_k(node_feats, k=10, mode="median") for node_feats in node_feat_list
+    ]
 
     method_names = [
         "Mean",
-        "Median",
         "Weighted avg",
-        "Top 3",
-        "Top 5",
+        "Top 3 mean",
+        "Top 5 mean",
+        "Median",
         "Top 5 Median",
+        "Top 10 Median",
+        "Random Forest",
         "Feed forward model",
     ]
     methods = [
         err_avg,
-        err_median,
         err_weighted,
         err_top3,
         err_top5,
+        err_median,
         err_top5_median,
+        err_top10_median,
+        rf_distances,
         eval_model_distances,
     ]
 
