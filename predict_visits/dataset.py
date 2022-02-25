@@ -52,6 +52,7 @@ class MobilityGraphDataset(InMemoryDataset):
         adj_is_unweighted=True,
         adj_is_symmetric=True,
         relative_feats=False,
+        embedding="simple",
         **kwargs,
     ):
         """
@@ -80,6 +81,7 @@ class MobilityGraphDataset(InMemoryDataset):
             quantile_lab=quantile_lab,
             nr_keep=nr_keep,
             log_labels=log_labels,
+            embedding=embedding,
         )
         self.nr_graphs = len(self.adjacency)
 
@@ -164,6 +166,8 @@ class MobilityGraphDataset(InMemoryDataset):
         coords_raw = np.array(node_feat_df[["x_normed", "y_normed"]])
         if embedding == "simple":
             embedded_coords, stats = std_log_embedding(coords_raw, stats)
+        elif embedding == "none":
+            embedded_coords = coords_raw
         elif embedding == "sinus":
             embedded_coords = sinusoidal_embedding(coords_raw, 10)
         else:
@@ -202,6 +206,7 @@ class MobilityGraphDataset(InMemoryDataset):
         nr_keep=50,
         dist_thresh=500,
         log_labels=False,
+        embedding="simple",
     ):
         """
         Preprocess the node features of the graph
@@ -216,7 +221,9 @@ class MobilityGraphDataset(InMemoryDataset):
             (
                 feature_matrix,
                 feat_stats,
-            ) = MobilityGraphDataset.node_feature_preprocessing(node_feature_df)
+            ) = MobilityGraphDataset.node_feature_preprocessing(
+                node_feature_df, embedding=embedding
+            )
             stats.append(feat_stats)
 
             # 2) crop or pad adjacency matrix to the x nodes with highest degree
