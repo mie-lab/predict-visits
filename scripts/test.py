@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import pickle
 from collections import defaultdict
 import torch
 from torch_geometric.data import DataLoader
@@ -13,6 +14,7 @@ from predict_visits.dataset import MobilityGraphDataset
 
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
+from predict_visits.utils import get_label
 
 
 def regular_grid(coordinates):
@@ -133,20 +135,16 @@ if __name__ == "__main__":
 
     model_name = args.model_name
     test_data_path = args.data_path
+    nr_trials = 5
 
     # outputs directory
     os.makedirs("outputs", exist_ok=True)
     out_path = os.path.join("outputs", model_name)
     os.makedirs(out_path, exist_ok=True)
 
-    # TODO: later use this script with model_name separately
-    # if model_name == "knn":
-    #     model = KNN(1, weighted=False)
-    # elif model_name == "simple_avg":
-    #     model = SimpleMedian()
-    # else:
     model_checkpoint = torch.load(
-        os.path.join("trained_models", model_name, "model"), map_location=torch.device('cpu')
+        os.path.join("trained_models", model_name, "model"),
+        map_location=torch.device("cpu"),
     )
     with open(
         os.path.join("trained_models", model_name, "cfg_res.json"), "r"
@@ -165,7 +163,83 @@ if __name__ == "__main__":
         "simple_median": SimpleMedian(),
     }
 
-    # just for us for comparison
+    # ----- Manual evaluation -----------
+    with open(os.path.join("data", test_data_path), "rb") as infile:
+        (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
+
+    # preprocess graphs manually
+    node_feats, adjacency, stats = MobilityGraphDataset.graph_preprocessing(
+        adjacency_graphs, node_feat_list, **cfg
+    )
+
+    results = []
+
+    for i in range(len(node_feats)):
+        adj = adjacency[i]
+        node_feat = node_feats[i]
+        # preprocess nodes and make grid for each graph
+        raw_labels = get_label(adj)
+        label_cutoff = max(
+            [np.quantile(raw_labels, cfg.get("quantile_lab", 0.95)), 1]
+        )
+
+        # select test node
+        for k in range(nr_trials):
+            (
+                adj_trial,
+                known_node_feats,
+                predict_node_feats,
+                predict_node_index,
+            ) = MobilityGraphDataset.select_test_node(node_feat, adj)
+            # transform to pytorch geometric data
+            data = MobilityGraphDataset.transform_to_torch(
+                adj_trial,
+                known_node_feats,
+                predict_node_feats,
+                cfg["relative_feats"],
+            )
+            lab = data.y[:, -1]
+            # only as sanity check
+            # unnormed_lab = MobilityGraphDataset.unnorm_label(
+            #     lab.item(),
+            #     label_cutoff,
+            #     cfg["log_labels"],
+            # )
+            results_by_model = {}
+            for model_name, eval_model in models_to_evaluate.items():
+                pred = eval_model(data)
+
+                loss = torch.sum((pred - lab) ** 2).item()
+
+                unnormed_pred = MobilityGraphDataset.unnorm_label(
+                    pred.item(),
+                    label_cutoff,
+                    cfg["log_labels"],
+                )
+
+                error = np.abs(unnormed_pred - raw_labels[predict_node_index])
+
+                model_res = {}
+                model_res["pred"] = pred.item()
+                model_res["raw_pred"] = unnormed_pred
+                model_res["loss"] = loss
+                model_res["error"] = error
+                results_by_model[model_name] = model_res
+
+            # add trial to results
+            results.append(
+                [lab.item(), raw_labels[predict_node_index], results_by_model]
+            )
+
+        # Visualization:
+        # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
+
+    with open(os.path.join(out_path, "results.json"), "w") as outfile:
+        json.dump(results, outfile)
+
+    # ------ Simple loss evaluation -------------
+
+    # load dataset
     test_dataset = MobilityGraphDataset([test_data_path])
 
     # Evaluate
@@ -186,29 +260,3 @@ if __name__ == "__main__":
     plt.ylabel("Loss per sample")
     plt.xlabel("Model")
     plt.savefig(os.path.join(out_path, f"results.png"))
-
-    # TODO: manual preprocessing to evaluate on fictionary locations
-
-    # # load data
-    # with open(test_data_path, "rb") as infile:
-    #     (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
-
-    # # preprocess graphs manually
-    # node_feats, adjacency, stats = MobilityGraphDataset.graph_preprocessing(
-    #     adjacency_graphs,
-    #     node_feat_list,
-    #     quantile_lab=0.95,
-    #     nr_keep=50,
-    # )
-    #
-    # for i in range(len(node_feats)):
-    #     # preprocess nodes and make grid for each graph
-    #     processed_adj = MobilityGraphDataset.adjacency_preprocessing(
-    #         adjacency[i]
-    #     )
-
-    #     # numpy to torch:
-    #     inp_graph_nodes = torch.from_numpy(node_feats[i]).float()
-    #     inp_adj = processed_adj.float()
-    #     # Visualization:
-    #     visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)

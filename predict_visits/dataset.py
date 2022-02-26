@@ -75,7 +75,7 @@ class MobilityGraphDataset(InMemoryDataset):
         )
 
         # Preprocess the graph to get adjacency and node features
-        self.node_feats, self.adjacency, stats = self.graph_preprocessing(
+        self.node_feats, self.adjacency, self.stats = self.graph_preprocessing(
             adjacency_graphs,
             node_feat_list,
             quantile_lab=quantile_lab,
@@ -87,7 +87,6 @@ class MobilityGraphDataset(InMemoryDataset):
 
         # store the feature dimension and normalization stats
         self.num_feats = self.node_feats[0].shape[1]
-        self.stats = stats
         print("Number samples after preprocessing", len(self.node_feats))
 
     def split_graphs_v1(self, node_feats, adjacency):
@@ -202,11 +201,12 @@ class MobilityGraphDataset(InMemoryDataset):
     def graph_preprocessing(
         adjacency_graphs,
         node_feature_dfs,
-        quantile_lab=0.9,
+        quantile_lab=0.95,
         nr_keep=50,
         dist_thresh=500,
         log_labels=False,
         embedding="simple",
+        **kwargs,
     ):
         """
         Preprocess the node features of the graph
@@ -253,11 +253,10 @@ class MobilityGraphDataset(InMemoryDataset):
             # 3) Get label (number of visits)
             # get the weighted in degree (the label in the prediction task)
             label = get_label(adj_crop)
-            if log_labels:
-                label = np.log(label + 1)
-            # normalize label by the quantile
             label_cutoff = max([np.quantile(label, quantile_lab), 1])
-            label = label / label_cutoff
+            label = MobilityGraphDataset.norm_label(
+                label, label_cutoff, log_labels=log_labels
+            )
 
             # concatenate the other features with the labels and append
             concat_feats_labels = np.concatenate(
@@ -266,14 +265,61 @@ class MobilityGraphDataset(InMemoryDataset):
             node_feats.append(concat_feats_labels)
         return node_feats, adjacency_matrices, stats
 
+    @staticmethod
+    def norm_label(label, label_cutoff, log_labels=False, quantile_lab=0.95):
+        label = label / label_cutoff
+        if log_labels:
+            label = np.log(label + 1)
+        # normalize label by the quantile
+        return label
+
+    @staticmethod
+    def unnorm_label(normed_label, label_cutoff, log_labels=False):
+        if log_labels:
+            label = np.exp(label) - 1
+        label = normed_label * label_cutoff
+        return label
+
     def len(self):
         return self.nr_graphs
 
-    def get(self, idx):
-        adj = self.adjacency[idx]
-        node_feat = self.node_feats[idx]
-        label_col = node_feat[:, -1]
+    @staticmethod
+    def transform_to_torch(
+        adj,
+        known_node_feats,
+        predict_node_feats,
+        relative_feats=False,
+        adj_is_unweighted=True,
+        adj_is_symmetric=True,
+    ):
+        if adj_is_symmetric:
+            adj = adj + adj.T
+        if adj_is_unweighted:
+            adj = (adj > 0).astype(int)
 
+        # transform to index & attr
+        edge_index, edge_attr = from_scipy_sparse_matrix(adj)
+
+        # get features of new (test) location
+        label_node_feats = torch.unsqueeze(predict_node_feats.float(), 0)
+
+        # transform node features to relative node features wrt new loc
+        if relative_feats:
+            known_node_feats[:, :-1] = (
+                known_node_feats[:, :-1] - label_node_feats[:, :-1]
+            )
+
+        data_sample = torch_geometric.data.Data(
+            x=known_node_feats.float(),
+            edge_index=edge_index,
+            edge_attr=edge_attr.float(),
+            y=label_node_feats,
+        )
+        return data_sample
+
+    @staticmethod
+    def select_test_node(node_feat, adj):
+        label_col = node_feat[:, -1]
         # Divide into the known and unkown nodes
         possible_nodes = np.where((label_col > 0) & (label_col <= 1))[0]
         if len(possible_nodes) == 0:
@@ -292,27 +338,20 @@ class MobilityGraphDataset(InMemoryDataset):
         adj = adj[known_nodes]
         adj = adj[:, known_nodes]
 
-        if self.adj_is_symmetric:
-            adj = adj + adj.T
-        if self.adj_is_unweighted:
-            adj = (adj > 0).astype(int)
-        # transform to index & attr
-        edge_index, edge_attr = from_scipy_sparse_matrix(adj)
+        return adj, known_node_feats, predict_node_feats, predict_node
 
-        # get features of new (test) location
-        label_node_feats = torch.unsqueeze(predict_node_feats.float(), 0)
+    def get(self, idx):
+        adj = self.adjacency[idx]
+        node_feat = self.node_feats[idx]
 
-        # transform node features to relative node features wrt new loc
-        if self.relative_feats:
-            known_node_feats[:, :-1] = (
-                known_node_feats[:, :-1] - label_node_feats[:, :-1]
-            )
+        # select one node as test node and remove it from the graph
+        (adj, known_node_feats, predict_node_feats, _) = self.select_test_node(
+            node_feat, adj
+        )
 
-        data_sample = torch_geometric.data.Data(
-            x=known_node_feats.float(),
-            edge_index=edge_index,
-            edge_attr=edge_attr.float(),
-            y=label_node_feats,
+        # transform to pytorch geometric data
+        data_sample = self.transform_to_torch(
+            adj, known_node_feats, predict_node_feats, self.relative_feats
         ).to(self.device)
 
         return data_sample

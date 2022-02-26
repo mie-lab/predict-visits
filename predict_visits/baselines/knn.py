@@ -20,7 +20,7 @@ class KNN:
         node_features = data.x
         assert len(node_features.shape) == 2
         # assert that only one batch
-        assert len(torch.unique(data.batch)) == 1
+        # assert len(torch.unique(data.batch)) == 1
         assert len(data.y.shape) == 2
         new_location_features = data.y[:, :-1]
 

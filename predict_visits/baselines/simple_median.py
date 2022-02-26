@@ -18,7 +18,7 @@ class SimpleMedian:
         node_features = data.x
         assert len(node_features.shape) == 2
         # assert that only one batch
-        assert len(torch.unique(data.batch)) == 1
+        # assert len(torch.unique(data.batch)) == 1
 
         avg_label = torch.median(node_features[:, -1])
         return avg_label
