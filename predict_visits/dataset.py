@@ -314,6 +314,7 @@ class MobilityGraphDataset(InMemoryDataset):
             edge_index=edge_index,
             edge_attr=edge_attr.float(),
             y=label_node_feats,
+            batch=torch.tensor([0 for _ in range(known_node_feats.size()[0])]),
         )
         return data_sample
 
