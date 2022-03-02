@@ -140,8 +140,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    assert os.path.exists(args.model_path)
-    assert os.path.exists(args.data_path)
     test_data_path = args.data_path
     # path to folder with the model to be evaluated
     model_path = args.model_path

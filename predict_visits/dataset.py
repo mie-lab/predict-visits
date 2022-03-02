@@ -276,7 +276,7 @@ class MobilityGraphDataset(InMemoryDataset):
     @staticmethod
     def unnorm_label(normed_label, label_cutoff, log_labels=False):
         if log_labels:
-            label = np.exp(label) - 1
+            normed_label = np.exp(normed_label) - 1
         label = normed_label * label_cutoff
         return label
 
