@@ -291,6 +291,7 @@ class MobilityGraphDataset(InMemoryDataset):
         relative_feats=False,
         adj_is_unweighted=True,
         adj_is_symmetric=True,
+        add_batch=False,
     ):
         if adj_is_symmetric:
             adj = adj + adj.T
@@ -314,8 +315,11 @@ class MobilityGraphDataset(InMemoryDataset):
             edge_index=edge_index,
             edge_attr=edge_attr.float(),
             y=label_node_feats,
-            batch=torch.tensor([0 for _ in range(known_node_feats.size()[0])]),
         )
+        if add_batch:
+            data_sample.batch = torch.tensor(
+                [0 for _ in range(known_node_feats.size()[0])]
+            )
         return data_sample
 
     @staticmethod

@@ -119,10 +119,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-m",
-        "--model_name",
+        "--model_path",
         type=str,
         required=True,
         help="Name of model (must be saved in trained_models dir)",
+    )
+    parser.add_argument(
+        "-o",
+        "--out_name",
+        type=str,
+        required=True,
+        help="Name where to save output file",
     )
     parser.add_argument(
         "-d",
@@ -133,35 +140,40 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    model_name = args.model_name
+    assert os.path.exists(args.model_path)
+    assert os.path.exists(args.data_path)
     test_data_path = args.data_path
+    # path to folder with the model to be evaluated
+    model_path = args.model_path
     nr_trials = 5
 
     # outputs directory
     os.makedirs("outputs", exist_ok=True)
-    out_path = os.path.join("outputs", model_name)
-    os.makedirs(out_path, exist_ok=True)
-
-    model_checkpoint = torch.load(
-        os.path.join("trained_models", model_name, "model"),
-        map_location=torch.device("cpu"),
-    )
-    with open(
-        os.path.join("trained_models", model_name, "cfg_res.json"), "r"
-    ) as infile:
-        cfg = json.load(infile)
-    model = VisitPredictionModel(cfg["nr_features"])
-    model.load_state_dict(model_checkpoint)
-    model.eval()
 
     # init baselines
     models_to_evaluate = {
-        "Ours": model,
         "knn_1": KNN(1, weighted=False),
         "knn_5": KNN(5, weighted=False),
         "knn_5_weighted": KNN(5, weighted=True),
         "simple_median": SimpleMedian(),
     }
+
+    # add trained model
+    # for model_name in os.listdir(model_path):
+    #     if model_name[0] == ".":
+    #         continue
+    model_checkpoint = torch.load(
+        os.path.join("trained_models", model_path, "model"),
+        map_location=torch.device("cpu"),
+    )
+    with open(
+        os.path.join("trained_models", model_path, "cfg_res.json"), "r"
+    ) as infile:
+        cfg = json.load(infile)
+    model = VisitPredictionModel(cfg["nr_features"])
+    model.load_state_dict(model_checkpoint)
+    model.eval()
+    models_to_evaluate[args.out_name] = model
 
     # ----- Manual evaluation -----------
     with open(os.path.join("data", test_data_path), "rb") as infile:
@@ -197,6 +209,7 @@ if __name__ == "__main__":
                 known_node_feats,
                 predict_node_feats,
                 cfg["relative_feats"],
+                add_batch=True,
             )
             lab = data.y[:, -1]
             # only as sanity check
@@ -234,7 +247,9 @@ if __name__ == "__main__":
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
 
-    with open(os.path.join(out_path, "results.json"), "w") as outfile:
+    with open(
+        os.path.join("outputs", f"results_{args.out_name}.json"), "w"
+    ) as outfile:
         json.dump(results, outfile)
 
     # ------ Simple loss evaluation -------------
@@ -251,12 +266,12 @@ if __name__ == "__main__":
     for model_name, losses in results_by_model.items():
         print(model_name, round(np.mean(losses), 5))
 
-    df = pd.DataFrame(results_by_model)
-    melted_df = df.melt()
-    plt.figure(figsize=(10, 5))
-    sns.boxplot(x="variable", y="value", data=melted_df)
-    plt.title("Loss by model")
-    plt.ylim(-0.01, 0.15)
-    plt.ylabel("Loss per sample")
-    plt.xlabel("Model")
-    plt.savefig(os.path.join(out_path, f"results.png"))
+    # df = pd.DataFrame(results_by_model)
+    # melted_df = df.melt()
+    # plt.figure(figsize=(10, 5))
+    # sns.boxplot(x="variable", y="value", data=melted_df)
+    # plt.title("Loss by model")
+    # plt.ylim(-0.01, 0.15)
+    # plt.ylabel("Loss per sample")
+    # plt.xlabel("Model")
+    # plt.savefig(os.path.join(out_path, f"results.png"))
