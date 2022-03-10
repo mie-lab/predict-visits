@@ -62,6 +62,13 @@ parser.add_argument(
     type=int,
     help="batch size",
 )
+parser.add_argument(
+    "-c",
+    "--label_cutoff",
+    default=10,
+    type=float,
+    help="cutoff for labels",
+)
 args = parser.parse_args()
 
 model_name = args.model

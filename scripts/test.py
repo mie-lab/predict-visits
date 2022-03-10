@@ -253,7 +253,7 @@ if __name__ == "__main__":
     # ------ Simple loss evaluation -------------
 
     # load dataset
-    test_dataset = MobilityGraphDataset([test_data_path])
+    test_dataset = MobilityGraphDataset([test_data_path], **cfg)
 
     # Evaluate
     results_by_model = evaluate(

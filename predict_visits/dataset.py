@@ -31,7 +31,7 @@ class MobilityGraphDataset(InMemoryDataset):
             Path where the dataset files are stored
         ratio_predict: float (between 0 and 1, default 0.1)
             Ratio of nodes per graph that is left out for training
-        quantile_lab: float (between 0 and 1, default 0.95)
+        label_cutoff: float (between 0 and 1, default 0.95)
             Only the nodes in the lower x-quantile are left out for
             training (e.g. home node can not be left out)
         nr_keep: graphs are reduced to the x nodes with highest degree
@@ -45,7 +45,7 @@ class MobilityGraphDataset(InMemoryDataset):
         transform=None,
         pre_transform=None,
         ratio_predict=0.1,
-        quantile_lab=0.95,
+        label_cutoff=10,
         nr_keep=50,
         min_label=1,
         log_labels=False,
@@ -78,7 +78,7 @@ class MobilityGraphDataset(InMemoryDataset):
         self.node_feats, self.adjacency, self.stats = self.graph_preprocessing(
             adjacency_graphs,
             node_feat_list,
-            quantile_lab=quantile_lab,
+            label_cutoff=label_cutoff,
             nr_keep=nr_keep,
             log_labels=log_labels,
             embedding=embedding,
@@ -201,7 +201,7 @@ class MobilityGraphDataset(InMemoryDataset):
     def graph_preprocessing(
         adjacency_graphs,
         node_feature_dfs,
-        quantile_lab=0.95,
+        label_cutoff=10,
         nr_keep=50,
         dist_thresh=500,
         log_labels=False,
@@ -253,9 +253,14 @@ class MobilityGraphDataset(InMemoryDataset):
             # 3) Get label (number of visits)
             # get the weighted in degree (the label in the prediction task)
             label = get_label(adj_crop)
-            label_cutoff = max([np.quantile(label, quantile_lab), 1])
+            # upper bound on labels can either be <1 --> quantile or the upper
+            # boudn directly
+            if label_cutoff < 1:
+                cutoff = max([np.quantile(label, label_cutoff), 1])
+            else:
+                cutoff = label_cutoff
             label = MobilityGraphDataset.norm_label(
-                label, label_cutoff, log_labels=log_labels
+                label, cutoff, log_labels=log_labels
             )
 
             # concatenate the other features with the labels and append
@@ -266,18 +271,21 @@ class MobilityGraphDataset(InMemoryDataset):
         return node_feats, adjacency_matrices, stats
 
     @staticmethod
-    def norm_label(label, label_cutoff, log_labels=False, quantile_lab=0.95):
-        label = label / label_cutoff
+    def norm_label(label, label_cutoff, log_labels=False):
         if log_labels:
             label = np.log(label + 1)
-        # normalize label by the quantile
+            label_cutoff = np.log(label_cutoff + 1)
+        # normalize label by the quantile --> value between 0 and 1
+        label = label / label_cutoff
         return label
 
     @staticmethod
     def unnorm_label(normed_label, label_cutoff, log_labels=False):
         if log_labels:
-            normed_label = np.exp(normed_label) - 1
+            label_cutoff = np.log(label_cutoff + 1)
         label = normed_label * label_cutoff
+        if log_labels:
+            label = np.exp(label) - 1
         return label
 
     def len(self):
