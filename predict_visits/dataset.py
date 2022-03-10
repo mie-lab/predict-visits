@@ -75,14 +75,21 @@ class MobilityGraphDataset(InMemoryDataset):
         )
 
         # Preprocess the graph to get adjacency and node features
-        self.node_feats, self.adjacency, self.stats = self.graph_preprocessing(
-            adjacency_graphs,
-            node_feat_list,
-            label_cutoff=label_cutoff,
-            nr_keep=nr_keep,
-            log_labels=log_labels,
-            embedding=embedding,
-        )
+        self.node_feats = []
+        self.adjacency = []
+        for i in range(len(self.users)):
+            # process all graphs
+            nf_one, adj_one, _ = self.graph_preprocessing(
+                adjacency_graphs[i],
+                node_feat_list[i],
+                label_cutoff=label_cutoff,
+                nr_keep=nr_keep,
+                log_labels=log_labels,
+                embedding=embedding,
+            )
+            self.node_feats.append(nf_one)
+            self.adjacency.append(adj_one)
+
         self.nr_graphs = len(self.adjacency)
 
         # store the feature dimension and normalization stats
@@ -199,8 +206,8 @@ class MobilityGraphDataset(InMemoryDataset):
 
     @staticmethod
     def graph_preprocessing(
-        adjacency_graphs,
-        node_feature_dfs,
+        adjacency,
+        node_feature_df,
         label_cutoff=10,
         nr_keep=50,
         dist_thresh=500,
@@ -212,62 +219,54 @@ class MobilityGraphDataset(InMemoryDataset):
         Preprocess the node features of the graph
         dist_thresh: Maximum distance of location from home (in km)
         """
-        node_feats, adjacency_matrices, stats = [], [], []
-        for adjacency, node_feature_df in zip(
-            adjacency_graphs, node_feature_dfs
-        ):
-            # 1) process node features
-            # transform geographic coordinates and make feature matrix
-            (
-                feature_matrix,
-                feat_stats,
-            ) = MobilityGraphDataset.node_feature_preprocessing(
-                node_feature_df, embedding=embedding
-            )
-            stats.append(feat_stats)
+        # 1) process node features
+        # transform geographic coordinates and make feature matrix
+        (
+            feature_matrix,
+            feat_stats,
+        ) = MobilityGraphDataset.node_feature_preprocessing(
+            node_feature_df, embedding=embedding
+        )
 
-            # 2) crop or pad adjacency matrix to the x nodes with highest degree
-            unweighted_adj = (adjacency > 0).astype(int)
-            overall_degree = (
-                np.array(np.sum(unweighted_adj, axis=0))[0]
-                + np.array(np.sum(unweighted_adj, axis=1))[0]
-            )
-            # additionally, filter out locs w distance higher than dist_thresh
-            too_far_away = np.where(
-                node_feature_df["distance"].values > dist_thresh * 1000
-            )[0]
-            sorted_usable_nodes = [
-                ind
-                for ind in np.argsort(overall_degree)
-                if ind not in too_far_away
-            ]
-            use_nodes = sorted_usable_nodes[-nr_keep:]
-            # 2.1) crop adjacency
-            adj_crop = adjacency[use_nodes]
-            adj_crop = adj_crop[:, use_nodes]
+        # 2) crop or pad adjacency matrix to the x nodes with highest degree
+        unweighted_adj = (adjacency > 0).astype(int)
+        overall_degree = (
+            np.array(np.sum(unweighted_adj, axis=0))[0]
+            + np.array(np.sum(unweighted_adj, axis=1))[0]
+        )
+        # additionally, filter out locs w distance higher than dist_thresh
+        too_far_away = np.where(
+            node_feature_df["distance"].values > dist_thresh * 1000
+        )[0]
+        sorted_usable_nodes = [
+            ind for ind in np.argsort(overall_degree) if ind not in too_far_away
+        ]
+        use_nodes = sorted_usable_nodes[-nr_keep:]
+        # 2.1) crop adjacency
+        adj_crop = adjacency[use_nodes]
+        adj_crop = adj_crop[:, use_nodes]
 
-            adjacency_matrices.append(adj_crop)
-            # 2.2) restrict features to use_nodes
-            feature_matrix = feature_matrix[use_nodes]
+        # 2.2) restrict features to use_nodes
+        feature_matrix = feature_matrix[use_nodes]
 
-            # 3) Get label (number of visits)
-            # get the weighted in degree (the label in the prediction task)
-            label = get_label(adj_crop)
-            # upper bound on labels can either be <1 --> quantile or the upper
-            # boudn directly
-            cutoff = MobilityGraphDataset.prep_cutoff(
-                label, label_cutoff, log_labels
-            )
-            label = MobilityGraphDataset.norm_label(
-                label, cutoff, log_labels=log_labels
-            )
+        # 3) Get label (number of visits)
+        # get the weighted in degree (the label in the prediction task)
+        label = get_label(adj_crop)
+        # upper bound on labels can either be <1 --> quantile or the upper
+        # boudn directly
+        cutoff = MobilityGraphDataset.prep_cutoff(
+            label, label_cutoff, log_labels
+        )
+        label = MobilityGraphDataset.norm_label(
+            label, cutoff, log_labels=log_labels
+        )
 
-            # concatenate the other features with the labels and append
-            concat_feats_labels = np.concatenate(
-                (feature_matrix, np.expand_dims(label, 1)), axis=1
-            )
-            node_feats.append(concat_feats_labels)
-        return node_feats, adjacency_matrices, stats
+        # concatenate the other features with the labels and append
+        concat_feats_labels = np.concatenate(
+            (feature_matrix, np.expand_dims(label, 1)), axis=1
+        )
+
+        return concat_feats_labels, adj_crop, feat_stats
 
     @staticmethod
     def prep_cutoff(label, label_cutoff, log_labels=False):
@@ -315,6 +314,10 @@ class MobilityGraphDataset(InMemoryDataset):
         # transform to index & attr
         edge_index, edge_attr = from_scipy_sparse_matrix(adj)
 
+        # transform to torch
+        known_node_feats = torch.from_numpy(known_node_feats)
+        predict_node_feats = torch.from_numpy(predict_node_feats)
+
         # get features of new (test) location
         label_node_feats = torch.unsqueeze(predict_node_feats.float(), 0)
 
@@ -350,9 +353,9 @@ class MobilityGraphDataset(InMemoryDataset):
         known_nodes = [i for i in range(len(node_feat)) if i != predict_node]
 
         # restrict feats to known nodes and convert to torch
-        known_node_feats = torch.from_numpy(node_feat[known_nodes])
+        known_node_feats = node_feat[known_nodes]
         # new node features and label
-        predict_node_feats = torch.from_numpy(node_feat[predict_node, :])
+        predict_node_feats = node_feat[predict_node, :]
         # reduce adjacency matrix to known nodes and preprocess
         adj = adj[known_nodes]
         adj = adj[:, known_nodes]
