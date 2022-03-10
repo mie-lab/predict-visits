@@ -255,10 +255,9 @@ class MobilityGraphDataset(InMemoryDataset):
             label = get_label(adj_crop)
             # upper bound on labels can either be <1 --> quantile or the upper
             # boudn directly
-            if label_cutoff < 1:
-                cutoff = max([np.quantile(label, label_cutoff), 1])
-            else:
-                cutoff = label_cutoff
+            cutoff = MobilityGraphDataset.prep_cutoff(
+                label, label_cutoff, log_labels
+            )
             label = MobilityGraphDataset.norm_label(
                 label, cutoff, log_labels=log_labels
             )
@@ -271,18 +270,25 @@ class MobilityGraphDataset(InMemoryDataset):
         return node_feats, adjacency_matrices, stats
 
     @staticmethod
+    def prep_cutoff(label, label_cutoff, log_labels=False):
+        if label_cutoff < 1:
+            cutoff = max([np.quantile(label, label_cutoff), 1])
+        else:
+            cutoff = label_cutoff
+        if log_labels:
+            cutoff = np.log(cutoff + 1)
+        return cutoff
+
+    @staticmethod
     def norm_label(label, label_cutoff, log_labels=False):
         if log_labels:
             label = np.log(label + 1)
-            label_cutoff = np.log(label_cutoff + 1)
         # normalize label by the quantile --> value between 0 and 1
         label = label / label_cutoff
         return label
 
     @staticmethod
     def unnorm_label(normed_label, label_cutoff, log_labels=False):
-        if log_labels:
-            label_cutoff = np.log(label_cutoff + 1)
         label = normed_label * label_cutoff
         if log_labels:
             label = np.exp(label) - 1

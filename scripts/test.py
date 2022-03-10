@@ -151,6 +151,7 @@ if __name__ == "__main__":
     # init baselines
     models_to_evaluate = {
         "knn_1": KNN(1, weighted=False),
+        "knn_3": KNN(3, weighted=False),
         "knn_5": KNN(5, weighted=False),
         "knn_5_weighted": KNN(5, weighted=True),
         "simple_median": SimpleMedian(),
@@ -189,8 +190,8 @@ if __name__ == "__main__":
         node_feat = node_feats[i]
         # preprocess nodes and make grid for each graph
         raw_labels = get_label(adj)
-        label_cutoff = max(
-            [np.quantile(raw_labels, cfg.get("quantile_lab", 0.95)), 1]
+        label_cutoff = MobilityGraphDataset.prep_cutoff(
+            raw_labels, cfg.get("label_cutoff", 0.95), cfg["log_labels"]
         )
 
         # select test node
