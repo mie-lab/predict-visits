@@ -7,36 +7,41 @@ from predict_visits.model import VisitPredictionModel
 
 
 def load_model(model_path):
+    with open(
+        os.path.join("trained_models", model_path, "cfg_res.json"), "r"
+    ) as infile:
+        cfg = json.load(infile)
+
+    model = VisitPredictionModel(cfg["nr_features"])
+    # load checkpoint
     model_checkpoint = torch.load(
         os.path.join("trained_models", model_path, "model"),
         map_location=torch.device("cpu"),
     )
     # such a shit: due to some pytorch version stuff or so, the checkpoint from
     # the cluster does not fit to my model. Solved with super ugly code below
-    new_checkpoint = {}
-    for key in model_checkpoint.keys():
-        ckpt_shape = model_checkpoint[key].shape
-        if len(ckpt_shape) == 3:
-            for i in range(ckpt_shape[0]):
-                new_key = ".".join(
-                    key.split(".")[:-1]
-                    + ["lins"]
-                    + [str(i)]
-                    + [key.split(".")[-1]]
-                )
-                # missing: swapaxes
-                new_checkpoint[new_key] = torch.swapaxes(
-                    model_checkpoint[key][i], 1, 0
-                )
-        else:
-            new_checkpoint[key] = model_checkpoint[key]
+    try:
+        model.load_state_dict(model_checkpoint)
+    except:
+        new_checkpoint = {}
+        for key in model_checkpoint.keys():
+            ckpt_shape = model_checkpoint[key].shape
+            if len(ckpt_shape) == 3:
+                for i in range(ckpt_shape[0]):
+                    new_key = ".".join(
+                        key.split(".")[:-1]
+                        + ["lins"]
+                        + [str(i)]
+                        + [key.split(".")[-1]]
+                    )
+                    # missing: swapaxes
+                    new_checkpoint[new_key] = torch.swapaxes(
+                        model_checkpoint[key][i], 1, 0
+                    )
+            else:
+                new_checkpoint[key] = model_checkpoint[key]
+        model.load_state_dict(new_checkpoint)
 
-    with open(
-        os.path.join("trained_models", model_path, "cfg_res.json"), "r"
-    ) as infile:
-        cfg = json.load(infile)
-    model = VisitPredictionModel(cfg["nr_features"])
-    model.load_state_dict(new_checkpoint)
     model.eval()
     return model, cfg
 
