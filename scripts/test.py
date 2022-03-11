@@ -59,8 +59,12 @@ def select_node(
     )
     eligible_rows = node_feats_raw[conditions]
 
-    # TODO: make sure that the probability is the same for each label value
-    take_out_ind = np.random.choice(eligible_rows["artificial_index"].values)
+    # sample with prob proportional to the value
+    select_probs = eligible_rows["out_degree"].values
+    select_probs = select_probs / np.sum(select_probs)
+    take_out_ind = np.random.choice(
+        eligible_rows["artificial_index"].values, p=select_probs
+    )
 
     # the nodes that are kept for the historic mobility input (the graph):
     use_nodes = np.delete(np.arange(len(node_feats_raw)), take_out_ind)

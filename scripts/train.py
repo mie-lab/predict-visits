@@ -24,8 +24,7 @@ parser.add_argument(
 parser.add_argument(
     "-l",
     "--log_labels",
-    default=False,
-    type=bool,
+    action="store_true",
     help="Use logarithm on labels",
 )
 parser.add_argument(
