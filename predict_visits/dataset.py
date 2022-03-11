@@ -227,12 +227,13 @@ class MobilityGraphDataset(InMemoryDataset):
         ) = MobilityGraphDataset.node_feature_preprocessing(
             node_feature_df, embedding=embedding
         )
+        # NOTE: out-degree is in-degree!
+        label = node_feature_df["out_degree"].values
 
         # 2) crop or pad adjacency matrix to the x nodes with highest degree
-        unweighted_adj = (adjacency > 0).astype(int)
         overall_degree = (
-            np.array(np.sum(unweighted_adj, axis=0))[0]
-            + np.array(np.sum(unweighted_adj, axis=1))[0]
+            np.array(np.sum(adjacency, axis=0))[0]
+            + np.array(np.sum(adjacency, axis=1))[0]
         )
         # additionally, filter out locs w distance higher than dist_thresh
         too_far_away = np.where(
@@ -250,13 +251,14 @@ class MobilityGraphDataset(InMemoryDataset):
         feature_matrix = feature_matrix[use_nodes]
 
         # 3) Get label (number of visits)
-        # get the weighted in degree (the label in the prediction task)
-        label = get_label(adj_crop)
         # upper bound on labels can either be <1 --> quantile or the upper
         # boudn directly
         cutoff = MobilityGraphDataset.prep_cutoff(
             label, label_cutoff, log_labels
         )
+        # restrict labels
+        label = label[use_nodes]
+        # normalize labels
         label = MobilityGraphDataset.norm_label(
             label, cutoff, log_labels=log_labels
         )
