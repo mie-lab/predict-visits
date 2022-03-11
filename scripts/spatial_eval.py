@@ -17,7 +17,7 @@ def select_node(node_feats, min_label=1, max_label=10):
     """
     Select one example node from the (unprocessed) graph for the analysis
     """
-    nr_visits = np.array(node_feats["in_degree"].values)
+    nr_visits = np.array(node_feats["out_degree"].values)
     # TODO: make sure that the probability is the same for each label value
     possible_inds = np.where(
         (nr_visits <= max_label) & (nr_visits >= min_label)
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     adjacency_raw = adjacency_raw[:, use_nodes]
 
     input_node_raw = node_feats_raw.iloc[take_out_ind : take_out_ind + 1]
-    gt_label = input_node_raw["in_degree"].values[0]
+    gt_label = input_node_raw["out_degree"].values[0]
     # print(node_feats_raw_graph.shape, adjacency_raw.shape, input_node_raw.shape)
 
     # preprocess graph

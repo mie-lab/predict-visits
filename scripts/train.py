@@ -4,7 +4,7 @@ import argparse
 import json
 import time
 import matplotlib.pyplot as plt
-from torch_geometric.loader import DataLoader
+from torch_geometric.data import DataLoader
 
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import VisitPredictionModel

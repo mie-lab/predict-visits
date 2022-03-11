@@ -43,6 +43,39 @@ def evaluate(models_to_evaluate, test_data, return_mode="mean"):
         raise ValueError("return_mode must be one of [mean, list]")
 
 
+def select_node(
+    node_feats_raw, adjacency_raw, min_label=1, max_label=10, dist_thresh=500
+):
+    """
+    Select one example node from the (unprocessed) graph for the analysis
+    # TODO: pass dist_thresh argument (currently hard coded)
+    """
+    node_feats_raw["artificial_index"] = np.arange(len(node_feats_raw))
+    # the test node must fulfill some conditions
+    conditions = (
+        (node_feats_raw["distance"] < dist_thresh * 1000)
+        & (node_feats_raw["out_degree"] <= max_label)
+        & (node_feats_raw["out_degree"] >= min_label)
+    )
+    eligible_rows = node_feats_raw[conditions]
+
+    # TODO: make sure that the probability is the same for each label value
+    take_out_ind = np.random.choice(eligible_rows["artificial_index"].values)
+
+    # the nodes that are kept for the historic mobility input (the graph):
+    use_nodes = np.delete(np.arange(len(node_feats_raw)), take_out_ind)
+
+    # crop to used nodes
+    node_feats_raw_graph = node_feats_raw.iloc[use_nodes]
+    adjacency_raw_graph = adjacency_raw[use_nodes]
+    adjacency_raw_graph = adjacency_raw_graph[:, use_nodes]
+
+    input_node_raw = node_feats_raw.iloc[take_out_ind : take_out_ind + 1]
+    gt_label = input_node_raw["out_degree"].values[0]
+
+    return node_feats_raw_graph, adjacency_raw_graph, input_node_raw, gt_label
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -71,81 +104,118 @@ if __name__ == "__main__":
     test_data_path = args.data_path
     # path to folder with the model to be evaluated
     model_path = args.model_path
-    nr_trials = 5
+    NR_TRIALS = 5
+    MIN_LABEL = 1
+    MAX_LABEL = 10
 
     # outputs directory
     os.makedirs("outputs", exist_ok=True)
 
     # init baselines
-    models_to_evaluate = {
-        "knn_1": KNN(1, weighted=False),
-        "knn_3": KNN(3, weighted=False),
-        "knn_5": KNN(5, weighted=False),
-        "knn_5_weighted": KNN(5, weighted=True),
-        "simple_median": SimpleMedian(),
-    }
+    models_to_evaluate = {"simple_median": SimpleMedian()}
+    cfg_to_evaluate = {"simple_median": {}}
 
     # add trained model
-    # for model_name in os.listdir(model_path):
-    #     if model_name[0] == ".":
-    #         continue
-    model, cfg = load_model(model_path)
-    models_to_evaluate[args.out_name] = model
+    for model_name in os.listdir(os.path.join("trained_models", model_path)):
+        if model_name[0] == ".":
+            continue
+        model, cfg = load_model(os.path.join(model_path, model_name))
+        models_to_evaluate[model_name] = model
+        cfg_to_evaluate[model_name] = cfg
 
-    # ----- Manual evaluation -----------
+        # add knn baselines with these cfgs
+        models_to_evaluate["knn_3_" + model_name] = KNN(3, weighted=False)
+        cfg_to_evaluate["knn_3_" + model_name] = cfg
+        models_to_evaluate["knn_5_" + model_name] = KNN(5, weighted=False)
+        cfg_to_evaluate["knn_5_" + model_name] = cfg
+        # TODO: knn_5_weighted": KNN(5, weighted=True),
+    print("Evaluating models: ", models_to_evaluate.keys())
+
+    # --------- Evaluation -----------
     with open(os.path.join("data", test_data_path), "rb") as infile:
         (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
 
     results = []
 
     for i in range(len(users)):
-        # preprocess graphs manually
-        node_feat, adj, _ = MobilityGraphDataset.graph_preprocessing(
-            adjacency_graphs[i], node_feat_list[i], **cfg
-        )
+        # current graph and features
+        node_feats_raw = node_feat_list[i]
+        adjacency_raw = adjacency_graphs[i]
 
-        # preprocess labels and upper bound on labels
-        raw_labels = get_label(adj)
-        label_cutoff = MobilityGraphDataset.prep_cutoff(
-            raw_labels, cfg.get("label_cutoff", 0.95), cfg["log_labels"]
-        )
-
-        # select test node
-        for k in range(nr_trials):
+        for k in range(NR_TRIALS):
+            # select test node - get features and label
             (
-                adj_trial,
-                known_node_feats,
-                predict_node_feats,
-                predict_node_index,
-            ) = MobilityGraphDataset.select_test_node(node_feat, adj)
-            # transform to pytorch geometric data
-            data = MobilityGraphDataset.transform_to_torch(
-                adj_trial,
-                known_node_feats,
-                predict_node_feats,
-                cfg["relative_feats"],
-                add_batch=True,
+                node_feats_raw_graph,
+                adjacency_raw_graph,
+                input_node_raw,
+                gt_label,
+            ) = select_node(
+                node_feats_raw,
+                adjacency_raw,
+                min_label=MIN_LABEL,
+                max_label=MAX_LABEL,
             )
-            lab = data.y[:, -1]
-            # only as sanity check
-            # unnormed_lab = MobilityGraphDataset.unnorm_label(
-            #     lab.item(),
-            #     label_cutoff,
-            #     cfg["log_labels"],
-            # )
+            # raw labels are only needed for the label cutoff
+            raw_labels = node_feats_raw_graph["out_degree"].values
+
             results_by_model = {}
             for model_name, eval_model in models_to_evaluate.items():
+                # get config for preprocessing
+                cfg = cfg_to_evaluate[model_name]
+
+                # preprocess graphs manually
+                (
+                    node_feat,
+                    adj,
+                    stats,
+                ) = MobilityGraphDataset.graph_preprocessing(
+                    adjacency_raw_graph, node_feats_raw_graph, **cfg
+                )
+
+                # preprocess labels and upper bound on labels
+                label_cutoff = MobilityGraphDataset.prep_cutoff(
+                    raw_labels,
+                    cfg.get("label_cutoff", 0.95),
+                    cfg.get("log_labels", False),
+                )
+                normed_label = MobilityGraphDataset.norm_label(
+                    gt_label, label_cutoff, cfg.get("log_labels", False)
+                )
+
+                # preprocess the left out node:
+                input_node, _ = MobilityGraphDataset.node_feature_preprocessing(
+                    input_node_raw,
+                    embedding=cfg.get("embedding", "simple"),
+                    stats=stats,
+                )
+                assert input_node.shape[0] == 1
+                predict_node_feats = np.concatenate(
+                    (input_node[0], np.array([normed_label]))
+                )
+
+                data = MobilityGraphDataset.transform_to_torch(
+                    adj,
+                    node_feat,
+                    predict_node_feats,
+                    cfg.get("relative_feats", False),
+                    cfg.get("adj_is_unweighted", True),
+                    cfg.get("adj_is_symmetric", True),
+                    add_batch=True,
+                )
+
+                # RUN MODEL
                 pred = eval_model(data)
+                lab = data.y[:, -1]
 
                 loss = torch.sum((pred - lab) ** 2).item()
 
                 unnormed_pred = MobilityGraphDataset.unnorm_label(
                     pred.item(),
                     label_cutoff,
-                    cfg["log_labels"],
+                    cfg.get("log_labels", False),
                 )
 
-                error = np.abs(unnormed_pred - raw_labels[predict_node_index])
+                error = np.abs(unnormed_pred - gt_label)
 
                 model_res = {}
                 model_res["pred"] = pred.item()
@@ -155,9 +225,7 @@ if __name__ == "__main__":
                 results_by_model[model_name] = model_res
 
             # add trial to results
-            results.append(
-                [lab.item(), raw_labels[predict_node_index], results_by_model]
-            )
+            results.append([lab.item(), gt_label, results_by_model])
 
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
