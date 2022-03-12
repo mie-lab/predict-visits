@@ -17,10 +17,12 @@ class KNN:
         """
         Get closes feature vector in node_features and use their label
         """
-        node_features = data.x
+        node_features_matrix = data.x
+        # only the node features with label <=1 are eligible
+        node_features = node_features_matrix[node_features_matrix[:, -1] <= 1]
         assert len(node_features.shape) == 2
         # assert that only one batch
-        assert len(torch.unique(data.batch)) == 1
+        # assert len(torch.unique(data.batch)) == 1
         assert len(data.y.shape) == 2
         new_location_features = data.y[:, :-1]
 

@@ -24,8 +24,7 @@ parser.add_argument(
 parser.add_argument(
     "-l",
     "--log_labels",
-    default=False,
-    type=bool,
+    action="store_true",
     help="Use logarithm on labels",
 )
 parser.add_argument(
@@ -61,6 +60,13 @@ parser.add_argument(
     default=1,
     type=int,
     help="batch size",
+)
+parser.add_argument(
+    "-c",
+    "--label_cutoff",
+    default=10,
+    type=float,
+    help="cutoff for labels",
 )
 args = parser.parse_args()
 
