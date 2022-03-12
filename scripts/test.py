@@ -43,11 +43,11 @@ def evaluate(models_to_evaluate, test_data, return_mode="mean"):
         raise ValueError("return_mode must be one of [mean, list]")
 
 
-def select_node(
-    node_feats_raw, adjacency_raw, min_label=1, max_label=10, dist_thresh=500
+def node_sampling(
+    node_feats_raw, nr_trials=1, min_label=1, max_label=10, dist_thresh=500
 ):
     """
-    Select one example node from the (unprocessed) graph for the analysis
+    Select test node from the (unprocessed) graph for the analysis
     # TODO: pass dist_thresh argument (currently hard coded)
     """
     node_feats_raw["artificial_index"] = np.arange(len(node_feats_raw))
@@ -59,12 +59,27 @@ def select_node(
     )
     eligible_rows = node_feats_raw[conditions]
 
-    # sample with prob proportional to the value
-    select_probs = eligible_rows["out_degree"].values
-    select_probs = select_probs / np.sum(select_probs)
-    take_out_ind = np.random.choice(
-        eligible_rows["artificial_index"].values, p=select_probs
+    # sample with prob such that label values have same prob to appear
+    nr_visit_col = eligible_rows["out_degree"].values
+    uni, counts = np.unique(nr_visit_col, return_counts=True)
+    assert len(uni) <= (max_label - min_label + 1)
+    prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
+    probs = np.array([prob_per_count[l] for l in nr_visit_col])
+    probs = probs / np.sum(probs)
+    # sample
+    test_node_indices = np.random.choice(
+        eligible_rows["artificial_index"].values,
+        size=nr_trials,
+        p=probs,
+        replace=False,
     )
+    return test_node_indices
+
+
+def select_node(node_feats_raw, adjacency_raw, take_out_ind):
+    """
+    Cut out the test node from the (unprocessed) graph for the analysis
+    """
 
     # the nodes that are kept for the historic mobility input (the graph):
     use_nodes = np.delete(np.arange(len(node_feats_raw)), take_out_ind)
@@ -135,7 +150,7 @@ if __name__ == "__main__":
         # TODO: knn_5_weighted": KNN(5, weighted=True),
     print("Evaluating models: ", models_to_evaluate.keys())
 
-    # --------- Evaluation -----------
+    # # --------- Evaluation -----------
     with open(os.path.join("data", test_data_path), "rb") as infile:
         (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
 
@@ -146,21 +161,20 @@ if __name__ == "__main__":
         node_feats_raw = node_feat_list[i]
         adjacency_raw = adjacency_graphs[i]
 
-        for k in range(NR_TRIALS):
+        test_nodes = node_sampling(
+            node_feats_raw,
+            nr_trials=NR_TRIALS,
+            min_label=MIN_LABEL,
+            max_label=MAX_LABEL,
+        )
+        for take_out_ind in test_nodes:
             # select test node - get features and label
             (
                 node_feats_raw_graph,
                 adjacency_raw_graph,
                 input_node_raw,
                 gt_label,
-            ) = select_node(
-                node_feats_raw,
-                adjacency_raw,
-                min_label=MIN_LABEL,
-                max_label=MAX_LABEL,
-            )
-            # raw labels are only needed for the label cutoff
-            raw_labels = node_feats_raw_graph["out_degree"].values
+            ) = select_node(node_feats_raw, adjacency_raw, take_out_ind)
 
             results_by_model = {}
             for model_name, eval_model in models_to_evaluate.items():
@@ -171,26 +185,26 @@ if __name__ == "__main__":
                 (
                     node_feat,
                     adj,
-                    stats,
+                    stats_and_cutoff,
                 ) = MobilityGraphDataset.graph_preprocessing(
                     adjacency_raw_graph, node_feats_raw_graph, **cfg
                 )
 
                 # preprocess labels and upper bound on labels
-                label_cutoff = MobilityGraphDataset.prep_cutoff(
-                    raw_labels,
-                    cfg.get("label_cutoff", 0.95),
-                    cfg.get("log_labels", False),
-                )
+                label_cutoff = stats_and_cutoff[1]
                 normed_label = MobilityGraphDataset.norm_label(
                     gt_label, label_cutoff, cfg.get("log_labels", False)
                 )
-
+                # this can happen (and is not avoidable) since we sample the
+                # new locations from all available locations
+                if normed_label > 1:
+                    continue
+                # print(model_name, label_cutoff, gt_label, normed_label)
                 # preprocess the left out node:
                 input_node, _ = MobilityGraphDataset.node_feature_preprocessing(
                     input_node_raw,
                     embedding=cfg.get("embedding", "simple"),
-                    stats=stats,
+                    stats=stats_and_cutoff[0],
                 )
                 assert input_node.shape[0] == 1
                 predict_node_feats = np.concatenate(
@@ -208,8 +222,8 @@ if __name__ == "__main__":
                 )
 
                 # RUN MODEL
-                pred = eval_model(data)
                 lab = data.y[:, -1]
+                pred = eval_model(data)
 
                 loss = torch.sum((pred - lab) ** 2).item()
 
@@ -238,27 +252,3 @@ if __name__ == "__main__":
         os.path.join("outputs", f"results_{args.out_name}.json"), "w"
     ) as outfile:
         json.dump(results, outfile)
-
-    # ------ Simple loss evaluation -------------
-
-    # load dataset
-    test_dataset = MobilityGraphDataset([test_data_path], **cfg)
-
-    # Evaluate
-    results_by_model = evaluate(
-        models_to_evaluate, test_dataset, return_mode="list"
-    )
-
-    print("RESULTS")
-    for model_name, losses in results_by_model.items():
-        print(model_name, round(np.mean(losses), 5))
-
-    # df = pd.DataFrame(results_by_model)
-    # melted_df = df.melt()
-    # plt.figure(figsize=(10, 5))
-    # sns.boxplot(x="variable", y="value", data=melted_df)
-    # plt.title("Loss by model")
-    # plt.ylim(-0.01, 0.15)
-    # plt.ylabel("Loss per sample")
-    # plt.xlabel("Model")
-    # plt.savefig(os.path.join(out_path, f"results.png"))

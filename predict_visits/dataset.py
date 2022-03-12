@@ -251,13 +251,13 @@ class MobilityGraphDataset(InMemoryDataset):
         feature_matrix = feature_matrix[use_nodes]
 
         # 3) Get label (number of visits)
+        # restrict labels
+        label = label[use_nodes]
         # upper bound on labels can either be <1 --> quantile or the upper
         # boudn directly
         cutoff = MobilityGraphDataset.prep_cutoff(
             label, label_cutoff, log_labels
         )
-        # restrict labels
-        label = label[use_nodes]
         # normalize labels
         label = MobilityGraphDataset.norm_label(
             label, cutoff, log_labels=log_labels
@@ -268,7 +268,7 @@ class MobilityGraphDataset(InMemoryDataset):
             (feature_matrix, np.expand_dims(label, 1)), axis=1
         )
 
-        return concat_feats_labels, adj_crop, feat_stats
+        return concat_feats_labels, adj_crop, [feat_stats, cutoff]
 
     @staticmethod
     def prep_cutoff(label, label_cutoff, log_labels=False):
