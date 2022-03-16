@@ -166,7 +166,13 @@ class MobilityGraphDataset(InMemoryDataset):
 
     @staticmethod
     def node_feature_preprocessing(
-        node_feat_df, stats=None, embedding="simple"
+        node_feat_df,
+        stats=None,
+        embedding="simple",
+        include_purpose=True,
+        include_dist=True,
+        include_poi=True,
+        include_time=False,
     ):
         # transform geographic_coordinates
         coords_raw = np.array(node_feat_df[["x_normed", "y_normed"]])
@@ -180,28 +186,37 @@ class MobilityGraphDataset(InMemoryDataset):
             raise ValueError(
                 f"Wrong embedding type {embedding}, must be simple or sinus"
             )
+        # collect features in a list:
+        features_to_include = [embedded_coords]
+
         # purpose feature
-        purpose_feature_arr = purpose_df_to_matrix(node_feat_df)
+        if include_purpose:
+            purpose_feature_arr = purpose_df_to_matrix(node_feat_df)
+            features_to_include.append(purpose_feature_arr)
+
         # distance feature (although already contained in coordinates)
-        distance_arr = np.expand_dims(
-            np.log(node_feat_df["distance"].values + 1), 1
-        )
+        if include_dist:
+            distance_arr = np.expand_dims(
+                np.log10(node_feat_df["distance"].values / 1000 + 1), 1
+            )
+            features_to_include.append(distance_arr)
+
         # Average start time (average is a very bad feature, refine that later)
-        start_time_arr = np.expand_dims(node_feat_df["started_at"].values, 1)
+        # use sinuoidal transform to express 0:00 == 23:59:99
+        if include_time:
+            started = node_feat_df["started_at"].values
+            sin_start = np.sin(2 * np.pi * started / 24)
+            cos_start = np.cos(2 * np.pi * started / 24)
+            start_time_arr = np.vstack([sin_start, cos_start]).swapaxes(1, 0)
+            features_to_include.append(start_time_arr)
 
         # POI data
-        poi_values = np.array(list(node_feat_df["poiRep"].values))
-        assert len(poi_values.shape) == 2, "Problem: NaNs in poi values"
+        if include_poi:
+            poi_values = np.array(list(node_feat_df["poiRep"].values))
+            assert len(poi_values.shape) == 2, "Problem: NaNs in poi values"
+            features_to_include.append(poi_values)
 
-        feature_matrix = np.hstack(
-            (
-                embedded_coords,
-                purpose_feature_arr,
-                distance_arr,
-                start_time_arr,
-                poi_values,
-            )
-        )
+        feature_matrix = np.hstack(features_to_include)
         return feature_matrix, stats
 
     @staticmethod
