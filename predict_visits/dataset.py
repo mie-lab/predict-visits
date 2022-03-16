@@ -342,10 +342,10 @@ class MobilityGraphDataset(InMemoryDataset):
         return data_sample
 
     @staticmethod
-    def select_test_node(node_feat, adj):
+    def select_test_node(node_feat, adj, min_lab=0):
         label_col = node_feat[:, -1]
         # Divide into the known and unkown nodes
-        possible_nodes = np.where((label_col > 0) & (label_col <= 1))[0]
+        possible_nodes = np.where((label_col >= min_lab) & (label_col <= 1))[0]
         if len(possible_nodes) == 0:
             # if doesn't work, just pick any (should not happen often)
             predict_node = np.random.randint(0, len(node_feat))

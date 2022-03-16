@@ -65,11 +65,15 @@ def node_sampling(
     assert len(uni) <= (max_label - min_label + 1)
     prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
     probs = np.array([prob_per_count[l] for l in nr_visit_col])
+
+    # to artificially include always the labels >10:
+    # probs[nr_visit_col > 10] = 1000
+
     probs = probs / np.sum(probs)
     # sample
     test_node_indices = np.random.choice(
         eligible_rows["artificial_index"].values,
-        size=nr_trials,
+        size=min([nr_trials, len(eligible_rows)]),
         p=probs,
         replace=False,
     )
@@ -123,8 +127,8 @@ if __name__ == "__main__":
     test_data_path = args.data_path
     # path to folder with the model to be evaluated
     model_path = args.model_path
-    NR_TRIALS = 5
-    MIN_LABEL = 1
+    NR_TRIALS = 10
+    MIN_LABEL = 0
     MAX_LABEL = 10
 
     # outputs directory
@@ -236,6 +240,7 @@ if __name__ == "__main__":
                 error = np.abs(unnormed_pred - gt_label)
 
                 model_res = {}
+                model_res["lab"] = lab.item()
                 model_res["pred"] = pred.item()
                 model_res["raw_pred"] = unnormed_pred
                 model_res["loss"] = loss
@@ -243,8 +248,7 @@ if __name__ == "__main__":
                 results_by_model[model_name] = model_res
 
             # add trial to results
-            results.append([lab.item(), gt_label, results_by_model])
-
+            results.append([users[i], gt_label, results_by_model])
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
 
