@@ -3,7 +3,7 @@ import json
 import os
 import torch
 import scipy.sparse as sp
-from predict_visits.model import VisitPredictionModel
+from predict_visits.model.graph_resnet import VisitPredictionModel
 
 
 def load_model(model_path):

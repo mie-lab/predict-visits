@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from torch_geometric.data import DataLoader
 
 from predict_visits.dataset import MobilityGraphDataset
-from predict_visits.model import VisitPredictionModel
+from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.baselines.simple_median import SimpleMedian
 from single_model_eval import evaluate
 

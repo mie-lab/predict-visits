@@ -8,7 +8,7 @@ import pickle
 import seaborn as sns
 import torch
 
-from predict_visits.model import VisitPredictionModel
+from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.utils import get_label, load_model
 
