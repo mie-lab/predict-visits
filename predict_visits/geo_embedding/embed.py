@@ -42,7 +42,7 @@ def std_log_embedding(coords, std=None):
     return log_coords / std, std
 
 
-def sinusoidal_embedding(coords, frequency):
+def sinusoidal_embedding(coords, frequency, stats=None):
     """
     Sinus embedding proposed by Mai et al (see sinusoidal.py)
 
@@ -58,8 +58,12 @@ def sinusoidal_embedding(coords, frequency):
     2d array
         Embedded coordinates. The embedding dimension is frequency * 6
     """
-    coords_wo_zero = np.absolute(coords)[coords != 0]
-    lambda_min, lambda_max = np.min(coords_wo_zero), np.max(coords_wo_zero)
+    if stats is None:
+        assert len(coords) > 1
+        coords_wo_zero = np.absolute(coords)[coords != 0]
+        lambda_min, lambda_max = np.min(coords_wo_zero), np.max(coords_wo_zero)
+    else:
+        lambda_min, lambda_max = stats
     # print(lambda_min, lambda_max)
     gridcell = TheoryGridCellSpatialRelationEncoder(
         coord_dim=2,
@@ -71,4 +75,4 @@ def sinusoidal_embedding(coords, frequency):
     )
 
     embedded_coords = gridcell.forward(np.expand_dims(coords, 0))[0]
-    return embedded_coords
+    return embedded_coords, (lambda_min, lambda_max)

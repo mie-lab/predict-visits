@@ -9,7 +9,7 @@ from torch_geometric.data import DataLoader
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.model import VisitPredictionModel
 from predict_visits.baselines.simple_median import SimpleMedian
-from test import evaluate
+from single_model_eval import evaluate
 
 
 # model name is desired one
@@ -30,7 +30,7 @@ parser.add_argument(
 parser.add_argument(
     "-k",
     "--nr_keep",
-    default=50,
+    default=60,
     type=int,
     help="graph size",
 )
@@ -44,29 +44,37 @@ parser.add_argument(
 parser.add_argument(
     "-e",
     "--nr_epochs",
-    default=200,
+    default=2000,
     type=int,
     help="number of epochs",
 )
 parser.add_argument(
     "-f",
     "--relative_feats",
-    action="store_true",
+    type=int,
+    default=1,
     help="represent node features relative to new node",
 )
 parser.add_argument(
     "-b",
     "--batch_size",
-    default=1,
+    default=8,
     type=int,
     help="batch size",
 )
 parser.add_argument(
     "-c",
     "--label_cutoff",
-    default=10,
+    default=0.95,
     type=float,
     help="cutoff for labels",
+)
+parser.add_argument(
+    "-z",
+    "--embedding",
+    default="simple",
+    type=str,
+    help="coordinate embedding",
 )
 args = parser.parse_args()
 
