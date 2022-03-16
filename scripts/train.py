@@ -68,6 +68,13 @@ parser.add_argument(
     type=float,
     help="cutoff for labels",
 )
+parser.add_argument(
+    "-z",
+    "--embedding",
+    default="simple",
+    type=str,
+    help="coordinate embedding",
+)
 args = parser.parse_args()
 
 model_name = args.model
