@@ -181,7 +181,7 @@ class MobilityGraphDataset(InMemoryDataset):
         elif embedding == "none":
             embedded_coords = coords_raw
         elif embedding == "sinus":
-            embedded_coords = sinusoidal_embedding(coords_raw, 10)
+            embedded_coords, stats = sinusoidal_embedding(coords_raw, 10, stats)
         else:
             raise ValueError(
                 f"Wrong embedding type {embedding}, must be simple or sinus"

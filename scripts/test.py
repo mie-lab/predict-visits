@@ -17,32 +17,6 @@ from predict_visits.baselines.knn import KNN
 from predict_visits.utils import get_label, load_model
 
 
-def evaluate(models_to_evaluate, test_data, return_mode="mean"):
-    """return_mode:  ["mean", "list"]"""
-    nr_samples = test_data.len()
-    test_data_loader = DataLoader(test_data, shuffle=False, batch_size=1)
-    # save results in dict
-    results_by_model = defaultdict(list)
-    for _, data in enumerate(test_data_loader):
-        lab = data.y[:, -1]
-        for model_name, eval_model in models_to_evaluate.items():
-            out = eval_model(data)
-            test_loss = torch.sum((out - lab) ** 2).item()
-            results_by_model[model_name].append(test_loss)
-    if return_mode == "mean":
-        # take average for each model
-        final_res = {}
-        for model_name in results_by_model.keys():
-            final_res[model_name] = (
-                np.sum(results_by_model[model_name]) / nr_samples
-            )
-        return final_res
-    elif return_mode == "list":
-        return results_by_model
-    else:
-        raise ValueError("return_mode must be one of [mean, list]")
-
-
 def node_sampling(
     node_feats_raw, nr_trials=1, min_label=1, max_label=10, dist_thresh=500
 ):
