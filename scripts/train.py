@@ -7,19 +7,19 @@ import matplotlib.pyplot as plt
 from torch_geometric.data import DataLoader
 
 from predict_visits.dataset import MobilityGraphDataset
-from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.baselines.simple_median import SimpleMedian
 from single_model_eval import evaluate
 
+from predict_visits.config import model_dict
 
 # model name is desired one
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "-m",
     "--model",
-    default="model",
+    default="gcn",
     type=str,
-    help="Name under which to save model",
+    help="Name of the model type to use",
 )
 parser.add_argument(
     "-l",
@@ -76,9 +76,29 @@ parser.add_argument(
     type=str,
     help="coordinate embedding",
 )
+parser.add_argument(
+    "-i",
+    "--historic_input",
+    default=7,
+    type=int,
+    help="nr nodes of historic mobility to use (only relevant for non-gcn)",
+)
+parser.add_argument(
+    "-s",
+    "--save_name",
+    default="model",
+    type=str,
+    help="Name under which to save model",
+)
 args = parser.parse_args()
 
-model_name = args.model
+cfg_model = model_dict[args.model]
+NeuralModel = cfg_model["model_class"]
+inp_transform = cfg_model["inp_transform"](**vars(args))
+cfg_model["model_cfg"]["historic_input"] = args.historic_input
+
+model_name = args.save_name
+
 # data files must exist in directory data
 train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
 # ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl", "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
@@ -109,12 +129,8 @@ train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 # Test on Geolife
 test_data = MobilityGraphDataset(test_data_files, device=device, **vars(args))
 
-# Create model - input dimension is the number of features of nodes in the graph
-# and the number of features of the new location
-model = VisitPredictionModel(
-    train_data.num_feats,
-    relative_feats=args.relative_feats,
-).to(device)
+# Create model - input dimension is the number of features
+model = NeuralModel(train_data.num_feats, **cfg_model["model_cfg"]).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
 r3 = lambda x: round(x * 100, 2)  # round function for printing
@@ -124,13 +140,14 @@ train_losses, test_losses, bl_losses = [], [], []
 for epoch in range(nr_epochs):
     epoch_loss = 0
     # TRAIN
-    for i, data in enumerate(train_loader):
+    for i, data_geometric in enumerate(train_loader):
+        # label is part of data.y --> visits to the new location
+        lab = data_geometric.y[:, -1:]
+        data = inp_transform(data_geometric)
+
         optimizer.zero_grad()
 
-        # label is part of data.y --> visits to the new location
-        lab = data.y[:, -1:]
         out = model(data.to(device))
-
         # MSE
         loss = torch.sum((out - lab) ** 2)
         loss.backward()
@@ -146,7 +163,9 @@ for epoch in range(nr_epochs):
     if epoch % evaluate_every == 0:
         with torch.no_grad():
             res_models = evaluate(
-                {"trained": model, "median": SimpleMedian()}, test_data
+                {"trained": model, "median": SimpleMedian()},
+                {"trained": inp_transform},
+                test_data,
             )
             test_loss = res_models["trained"]
 
@@ -170,13 +189,3 @@ cfg["bl_losses"] = bl_losses
 cfg["training_time"] = time.time() - start_training_time
 with open(os.path.join(out_path, "cfg_res.json"), "w") as outfile:
     json.dump(cfg, outfile)
-
-# plot losses
-fig = plt.figure()
-ax = fig.add_subplot(111)
-ax.plot(train_losses, label="Train", c="blue")
-ax.set_ylabel("Train losses", c="blue")
-ax1 = ax.twinx()
-ax1.plot(test_losses, label="Test", c="red")
-ax1.set_ylabel("Test losses", c="red")
-plt.savefig(os.path.join(out_path, "loss_plot.png"))

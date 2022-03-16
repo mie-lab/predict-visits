@@ -3,17 +3,28 @@ import torch
 
 
 class FullyConnectedModel(nn.Module):
-    def __init__(self, input_size, output_size, ff_layers=[64, 128, 64, 32]):
+    def __init__(
+        self,
+        num_feats,
+        out_dim=1,
+        layers=[128, 64],
+        historic_input=5,
+        final_act=torch.sigmoid,
+    ):
         super(FullyConnectedModel, self).__init__()
-        self.ff_layers = nn.ModuleList([nn.Linear(input_size, ff_layers[0])])
-        for i in range(len(ff_layers) - 1):
-            self.ff_layers.append(nn.Linear(ff_layers[i], ff_layers[i + 1]))
+        input_size = num_feats * (historic_input + 1)
+        self.ff_layers = nn.ModuleList([nn.Linear(input_size, layers[0])])
+        for i in range(len(layers) - 1):
+            self.ff_layers.append(nn.Linear(layers[i], layers[i + 1]))
         # last layer
-        self.ff_layers.append(nn.Linear(ff_layers[-1], output_size))
+        self.ff_layers.append(nn.Linear(layers[-1], out_dim))
+        self.final_act = final_act
 
     def forward(self, x):
         for layer in self.ff_layers[:-1]:
             x = torch.relu(layer(x))
         # last layer without activation
         output = self.ff_layers[-1](x)
+        if self.final_act is not None:
+            output = self.final_act(output)
         return output

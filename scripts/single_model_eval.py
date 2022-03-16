@@ -16,17 +16,25 @@ from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
 from predict_visits.utils import get_label, load_model
 
+from predict_visits.config import model_dict
 
-def evaluate(models_to_evaluate, test_data, return_mode="mean"):
+
+def evaluate(
+    models_to_evaluate, transform_functions, test_data, return_mode="mean"
+):
     """return_mode:  ["mean", "list"]"""
     nr_samples = test_data.len()
     test_data_loader = DataLoader(test_data, shuffle=False, batch_size=1)
     # save results in dict
     results_by_model = defaultdict(list)
     for _, data in enumerate(test_data_loader):
-        lab = data.y[:, -1]
+        lab = data.y[:, -1].clone()
         for model_name, eval_model in models_to_evaluate.items():
-            out = eval_model(data)
+            # pre transform on input
+            transform = transform_functions.get(model_name, lambda x: x)
+            inp_data = transform(data)
+            # forward pass
+            out = eval_model(inp_data)
             test_loss = torch.sum((out - lab) ** 2).item()
             results_by_model[model_name].append(test_loss)
     if return_mode == "mean":
@@ -91,6 +99,8 @@ if __name__ == "__main__":
     #         continue
     model, cfg = load_model(model_path)
     models_to_evaluate[args.out_name] = model
+    inp_transform_model = model_dict[cfg["model"]]["inp_transform"]
+    transform = {args.out_name: inp_transform_model(**cfg)}
 
     # ----- Manual evaluation -----------
     with open(os.path.join("data", test_data_path), "rb") as infile:
@@ -135,7 +145,9 @@ if __name__ == "__main__":
             # )
             results_by_model = {}
             for model_name, eval_model in models_to_evaluate.items():
-                pred = eval_model(data)
+                transform_func = transform.get(model_name, lambda x: x)
+                inp_data = transform_func(data)
+                pred = eval_model(inp_data)
 
                 loss = torch.sum((pred - lab) ** 2).item()
 
@@ -174,7 +186,7 @@ if __name__ == "__main__":
 
     # Evaluate
     results_by_model = evaluate(
-        models_to_evaluate, test_dataset, return_mode="list"
+        models_to_evaluate, transform, test_dataset, return_mode="list"
     )
 
     print("RESULTS")

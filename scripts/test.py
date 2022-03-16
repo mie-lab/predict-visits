@@ -1,6 +1,7 @@
 import os
 import json
 import argparse
+from matplotlib import transforms
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -15,6 +16,8 @@ from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
 from predict_visits.utils import get_label, load_model
+
+from predict_visits.config import model_dict
 
 
 def node_sampling(
@@ -111,6 +114,7 @@ if __name__ == "__main__":
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
     cfg_to_evaluate = {"simple_median": {}}
+    transform = {}
 
     # add trained model
     for model_name in os.listdir(os.path.join("trained_models", model_path)):
@@ -119,6 +123,10 @@ if __name__ == "__main__":
         model, cfg = load_model(os.path.join(model_path, model_name))
         models_to_evaluate[model_name] = model
         cfg_to_evaluate[model_name] = cfg
+
+        # add transform function
+        inp_transform_model = model_dict[cfg["model"]]["inp_transform"]
+        transform[model_name] = inp_transform_model(**cfg)
 
         # add knn baselines with these cfgs
         models_to_evaluate["knn_3_" + model_name] = KNN(3, weighted=False)
@@ -199,9 +207,13 @@ if __name__ == "__main__":
                     add_batch=True,
                 )
 
+                # final model-dependent transform
+                transform_func = transform.get(model_name, lambda x: x)
+                inp_data = transform_func(data)
+
                 # RUN MODEL
                 lab = data.y[:, -1]
-                pred = eval_model(data)
+                pred = eval_model(inp_data)
 
                 loss = torch.sum((pred - lab) ** 2).item()
 

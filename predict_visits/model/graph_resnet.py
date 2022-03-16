@@ -178,6 +178,7 @@ class VisitPredictionModel(nn.Module):
     def __init__(
         self,
         node_feat_dim,
+        out_dim=1,
         graph_enc_dim=64,
         graph_layers: Union[int, List[int]] = 42,
         graph_k: int = 4,
@@ -212,7 +213,7 @@ class VisitPredictionModel(nn.Module):
         for i in range(len(ff_layers) - 1):
             self.ff_layers.append(nn.Linear(ff_layers[i], ff_layers[i + 1]))
         # last layer
-        self.ff_layers.append(nn.Linear(ff_layers[-1], 1))
+        self.ff_layers.append(nn.Linear(ff_layers[-1], out_dim))
 
     def forward(self, data):
         # 1. Graph processing - node embeddings
