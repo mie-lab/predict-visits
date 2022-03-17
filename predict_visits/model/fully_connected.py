@@ -9,7 +9,7 @@ class FullyConnectedModel(nn.Module):
         out_dim=1,
         layers=[128, 64],
         historic_input=5,
-        final_act=torch.sigmoid,
+        final_act="sigmoid",
     ):
         super(FullyConnectedModel, self).__init__()
         input_size = num_feats * (historic_input + 1)
@@ -18,13 +18,18 @@ class FullyConnectedModel(nn.Module):
             self.ff_layers.append(nn.Linear(layers[i], layers[i + 1]))
         # last layer
         self.ff_layers.append(nn.Linear(layers[-1], out_dim))
-        self.final_act = final_act
+        # set activation function for last layer
+        final_act_dict = {
+            "sigmoid": torch.sigmoid,
+            "relu": torch.relu,
+            "none": lambda x: x,
+        }
+        self.final_act = final_act_dict[final_act]
 
     def forward(self, x):
         for layer in self.ff_layers[:-1]:
             x = torch.relu(layer(x))
         # last layer without activation
         output = self.ff_layers[-1](x)
-        if self.final_act is not None:
-            output = self.final_act(output)
+        output = self.final_act(output)
         return output

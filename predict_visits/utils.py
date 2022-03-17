@@ -9,7 +9,7 @@ from predict_visits.config import model_dict
 
 def load_model(model_path):
     with open(
-        os.path.join("trained_models", model_path, "cfg_res.json"), "r"
+        os.path.join("trained_models", model_path, "cfg.json"), "r"
     ) as infile:
         cfg = json.load(infile)
     # get info which model to use

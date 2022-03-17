@@ -1,12 +1,12 @@
 import torch
-from predict_visits.model.transforms import TransformFF, TransformGCN
+from predict_visits.model.transforms import TransformFF, NoTransform
 from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.model.fully_connected import FullyConnectedModel
 
 model_dict = {
     "gcn": {
         "model_class": VisitPredictionModel,
-        "inp_transform": TransformGCN,
+        "inp_transform": NoTransform,
         "model_cfg": {
             "out_dim": 1,
             "ff_layers": [64, 32],
@@ -21,7 +21,7 @@ model_dict = {
         "model_cfg": {
             "out_dim": 1,
             "layers": [128, 64],
-            "final_act": torch.sigmoid,
+            "final_act": "sigmoid",
         },
     },
 }

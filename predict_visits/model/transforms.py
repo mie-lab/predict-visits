@@ -34,10 +34,9 @@ class TransformFF:
         return loc_sequence
 
 
-class TransformGCN:
+class NoTransform:
     def __init__(self, **kwargs):
         pass
 
     def __call__(self, geometric_data):
-        geometric_data.y[:, -1] = 0
         return geometric_data

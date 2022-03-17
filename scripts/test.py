@@ -1,22 +1,16 @@
 import os
 import json
 import argparse
-from matplotlib import transforms
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import pickle
 from collections import defaultdict
 import torch
-from torch_geometric.data import DataLoader
-from predict_visits.model.graph_resnet import VisitPredictionModel
-from predict_visits.dataset import MobilityGraphDataset
 
+from predict_visits.model.transforms import NoTransform
+from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
-from predict_visits.utils import get_label, load_model
-
+from predict_visits.utils import load_model
 from predict_visits.config import model_dict
 
 
@@ -125,8 +119,9 @@ if __name__ == "__main__":
         cfg_to_evaluate[model_name] = cfg
 
         # add transform function
-        inp_transform_model = model_dict[cfg["model"]]["inp_transform"]
-        transform[model_name] = inp_transform_model(**cfg)
+        model_cfg = model_dict[cfg["model"]]
+        transform_for_model = model_cfg.get("inp_transform", NoTransform)
+        transform[model_name] = transform_for_model(**cfg)
 
         # add knn baselines with these cfgs
         models_to_evaluate["knn_3_" + model_name] = KNN(3, weighted=False)
