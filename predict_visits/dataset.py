@@ -357,7 +357,7 @@ class MobilityGraphDataset(InMemoryDataset):
         return data_sample
 
     @staticmethod
-    def select_test_node(node_feat, adj, min_lab=0):
+    def select_test_node(node_feat, adj, min_lab=0, sampling="uniform"):
         label_col = node_feat[:, -1]
         # Divide into the known and unkown nodes
         possible_nodes = np.where((label_col >= min_lab) & (label_col <= 1))[0]
@@ -365,7 +365,24 @@ class MobilityGraphDataset(InMemoryDataset):
             # if doesn't work, just pick any (should not happen often)
             predict_node = np.random.randint(0, len(node_feat))
         else:
-            predict_node = np.random.choice(possible_nodes)
+            if sampling == "balanced":
+                # balanced sampling (each visit number equally likely)
+                label_subset = label_col[possible_nodes]
+                uni, counts = np.unique(label_subset, return_counts=True)
+                prob_per_count = {
+                    uni[i]: 1 / counts[i] for i in range(len(uni))
+                }
+                probs = np.array([prob_per_count[l] for l in label_subset])
+                probs = probs / np.sum(probs)
+            elif sampling == "value_based":
+                # scale probability with label (ind of occurence)
+                label_subset = label_col[possible_nodes]
+                probs = label_subset / np.sum(label_subset)
+            else:
+                probs = [
+                    1 / len(possible_nodes) for _ in range(len(possible_nodes))
+                ]
+            predict_node = np.random.choice(possible_nodes, p=probs)
 
         known_nodes = [i for i in range(len(node_feat)) if i != predict_node]
 
