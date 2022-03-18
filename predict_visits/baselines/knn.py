@@ -8,10 +8,10 @@ class KNN:
     k-nearest neighbor baseline to infer number of visits
     """
 
-    def __init__(self, k=1, weighted=False):
+    def __init__(self, k=1, weighted=False, median=False):
         self.k = k
         self.weighted = weighted
-        # TODO: distinguish geographically close in space / normalize features!
+        self.median = median
 
     def __call__(self, data):
         """
@@ -36,5 +36,8 @@ class KNN:
             normed_knn_dist = knn_dist / torch.sum(knn_dist)
             avg_label = torch.sum(normed_knn_dist * node_features[knn_inds, -1])
         else:
-            avg_label = torch.mean(node_features[knn_inds, -1])
+            if self.median:
+                avg_label = torch.median(node_features[knn_inds, -1])
+            else:
+                avg_label = torch.mean(node_features[knn_inds, -1])
         return avg_label

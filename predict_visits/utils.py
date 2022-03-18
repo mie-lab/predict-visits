@@ -3,16 +3,23 @@ import json
 import os
 import torch
 import scipy.sparse as sp
-from predict_visits.model import VisitPredictionModel
+from predict_visits.model.graph_resnet import VisitPredictionModel
+from predict_visits.config import model_dict
 
 
 def load_model(model_path):
     with open(
-        os.path.join("trained_models", model_path, "cfg_res.json"), "r"
+        os.path.join("trained_models", model_path, "cfg.json"), "r"
     ) as infile:
         cfg = json.load(infile)
+    # get info which model to use
+    cfg_model = model_dict[cfg["model"]]
+    NeuralModel = cfg_model["model_class"]
+    cfg_model["model_cfg"]["historic_input"] = cfg.get("historic_input", 7)
 
-    model = VisitPredictionModel(cfg["nr_features"])
+    # init model
+    model = NeuralModel(cfg["nr_features"], **cfg_model["model_cfg"])
+
     # load checkpoint
     model_checkpoint = torch.load(
         os.path.join("trained_models", model_path, "model"),

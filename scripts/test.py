@@ -1,20 +1,17 @@
 import os
 import json
 import argparse
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import pickle
 from collections import defaultdict
 import torch
-from torch_geometric.data import DataLoader
-from predict_visits.model import VisitPredictionModel
-from predict_visits.dataset import MobilityGraphDataset
 
+from predict_visits.model.transforms import NoTransform
+from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
-from predict_visits.utils import get_label, load_model
+from predict_visits.utils import load_model
+from predict_visits.config import model_dict
 
 
 def node_sampling(
@@ -111,6 +108,7 @@ if __name__ == "__main__":
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
     cfg_to_evaluate = {"simple_median": {}}
+    transform = {}
 
     # add trained model
     for model_name in os.listdir(os.path.join("trained_models", model_path)):
@@ -120,12 +118,23 @@ if __name__ == "__main__":
         models_to_evaluate[model_name] = model
         cfg_to_evaluate[model_name] = cfg
 
+        # add transform function
+        model_cfg = model_dict[cfg["model"]]
+        transform_for_model = model_cfg.get("inp_transform", NoTransform)
+        transform[model_name] = transform_for_model(**cfg)
+
         # add knn baselines with these cfgs
-        models_to_evaluate["knn_3_" + model_name] = KNN(3, weighted=False)
-        cfg_to_evaluate["knn_3_" + model_name] = cfg
-        models_to_evaluate["knn_5_" + model_name] = KNN(5, weighted=False)
-        cfg_to_evaluate["knn_5_" + model_name] = cfg
-        # TODO: knn_5_weighted": KNN(5, weighted=True),
+        # models_to_evaluate["knn_5_" + model_name] = KNN(5, weighted=False)
+        # cfg_to_evaluate["knn_5_" + model_name] = cfg
+
+    # KNN EVAL:
+    # for i in np.arange(1, 28, 2):
+    #     # add knn baselines with these cfgs
+    #     models_to_evaluate[f"knn_{i}"] = KNN(i, weighted=False)
+    #     cfg_to_evaluate[f"knn_{i}"] = cfg
+    #     models_to_evaluate[f"knn_{i}_w"] = KNN(i, weighted=True)
+    #     cfg_to_evaluate[f"knn_{i}_w"] = cfg
+
     print("Evaluating models: ", models_to_evaluate.keys())
 
     # # --------- Evaluation -----------
@@ -199,9 +208,13 @@ if __name__ == "__main__":
                     add_batch=True,
                 )
 
+                # final model-dependent transform
+                transform_func = transform.get(model_name, lambda x: x)
+                inp_data = transform_func(data)
+
                 # RUN MODEL
                 lab = data.y[:, -1]
-                pred = eval_model(data)
+                pred = eval_model(inp_data)
 
                 loss = torch.sum((pred - lab) ** 2).item()
 
