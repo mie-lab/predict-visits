@@ -15,15 +15,15 @@ from predict_visits.config import model_dict
 # model name is desired one
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--model", default="gcn", type=str, help="model type")
-parser.add_argument("-l", "--log_labels", action="store_true", help="apply log")
+parser.add_argument("-l", "--log_labels", default=1, type=int, help="apply log")
 parser.add_argument("-k", "--nr_keep", default=60, type=int, help="graph size")
 parser.add_argument("-r", "--learning_rate", default=1e-4, type=float)
-parser.add_argument("-e", "--nr_epochs", default=2000, type=int)
+parser.add_argument("-e", "--nr_epochs", default=1000, type=int)
 parser.add_argument("-f", "--relative_feats", type=int, default=1)
 parser.add_argument("-b", "--batch_size", default=8, type=int)
 parser.add_argument("-c", "--label_cutoff", default=0.95, type=float)
 parser.add_argument("-z", "--embedding", default="simple", type=str)
-parser.add_argument("-i", "--historic_input", default=7, type=int)
+parser.add_argument("-i", "--historic_input", default=10, type=int)
 parser.add_argument("-s", "--save_name", default="model", type=str)
 args = parser.parse_args()
 
