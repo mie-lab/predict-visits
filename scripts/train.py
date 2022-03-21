@@ -27,10 +27,6 @@ parser.add_argument("-i", "--historic_input", default=10, type=int)
 parser.add_argument("-s", "--save_name", default="model", type=str)
 args = parser.parse_args()
 
-# get basic classes / functions
-NeuralModel = model_dict[args.model]["model_class"]
-inp_transform = model_dict[args.model]["inp_transform"](**vars(args))
-
 # define config
 cfg = vars(args)
 model_cfg = model_dict[args.model]["model_cfg"]
@@ -38,6 +34,9 @@ model_cfg["historic_input"] = cfg["historic_input"]  # model-specific args
 cfg["model_cfg"] = model_cfg
 print("config:", cfg)
 
+# get basic classes / functions
+NeuralModel = model_dict[args.model]["model_class"]
+inp_transform = model_dict[args.model]["inp_transform"](**model_cfg)
 model_name = args.save_name
 
 # data files must exist in directory data
