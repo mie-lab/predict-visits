@@ -124,8 +124,13 @@ if __name__ == "__main__":
         transform[model_name] = transform_for_model(**cfg)
 
         # add knn baselines with these cfgs
-        # models_to_evaluate["knn_5_" + model_name] = KNN(5, weighted=False)
-        # cfg_to_evaluate["knn_5_" + model_name] = cfg
+
+    # # KNNs for best model comparison
+    # cfg_knn = cfg_to_evaluate["final_gcn_k60_2"]
+    # models_to_evaluate["knn_5"] = KNN(5, weighted=False)
+    # cfg_to_evaluate["knn_5"] = cfg_knn
+    # models_to_evaluate["knn_25"] = KNN(25, weighted=False)
+    # cfg_to_evaluate["knn_25"] = cfg_knn
 
     # KNN EVAL:
     # for i in np.arange(1, 28, 2):

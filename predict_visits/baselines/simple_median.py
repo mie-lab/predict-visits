@@ -8,8 +8,8 @@ class SimpleMedian:
     k-nearest neighbor baseline to infer number of visits
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, mean=False):
+        self.mean=mean
 
     def __call__(self, data):
         """
@@ -20,5 +20,8 @@ class SimpleMedian:
         # assert that only one batch
         # assert len(torch.unique(data.batch)) == 1
 
-        avg_label = torch.median(node_features[:, -1])
+        if self.mean:
+            avg_label = torch.mean(node_features[:, -1])
+        else: 
+            avg_label = torch.median(node_features[:, -1])
         return avg_label
