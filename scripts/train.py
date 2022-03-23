@@ -42,8 +42,13 @@ model_name = args.save_name
 
 # data files must exist in directory data
 train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
-# ["t120_yumuv_graph_rep_poi.pkl", "t120_gc2_poi.pkl",
-# "t120_tist_toph100_poi.pkl", "t120_geolife_poi.pkl"]
+# all datasets
+# [
+#     "t120_gc1_poi.pkl",
+#     "t120_yumuv_graph_rep_poi.pkl",
+#     "t120_tist_toph100.pkl",
+#     "t120_tist_random100.pkl",
+# ]
 test_data_files = ["t120_gc2_poi.pkl"]
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs

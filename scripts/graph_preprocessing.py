@@ -42,6 +42,7 @@ sp_name_dict = {
     "yumuv_graph_rep": "staypoints",
     "geolife": "staypoints_extent",
     "tist_toph100": "staypoints_extent",
+    "tist_random100": "staypoints",
 }
 locs_name_dict = {
     "gc1": "locations_extent",
@@ -49,6 +50,7 @@ locs_name_dict = {
     "yumuv_graph_rep": "locations",
     "geolife": "locations_extent",
     "tist_toph100": "locations_extent",
+    "tist_random100": "locations",
 }
 
 
@@ -369,7 +371,7 @@ if __name__ == "__main__":
     min_nodes = args.node_thresh
     save_name = args.save_name
 
-    studies = ["gc1", "gc2", "geolife", "tist_toph100", "yumuv_graph_rep"]
+    studies = ["tist_random100"]
 
     for study in studies:
         print("--------- Start {} --------------".format(study))
@@ -461,6 +463,8 @@ if __name__ == "__main__":
 
                 # Preprocessing graphs:
                 graph = delete_zero_edges(graph)
+                if graph.number_of_nodes() < min_nodes:
+                    continue
                 graph = get_largest_component(graph)
                 graph = remove_loops(graph)
                 if (
