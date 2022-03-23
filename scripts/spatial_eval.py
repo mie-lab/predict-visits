@@ -13,19 +13,7 @@ from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.utils import get_label, load_model
 from predict_visits.config import model_dict
 from predict_visits.model.transforms import NoTransform
-
-
-def select_node(node_feats, min_label=1, max_label=10):
-    """
-    Select one example node from the (unprocessed) graph for the analysis
-    """
-    nr_visits = np.array(node_feats["out_degree"].values)
-    # TODO: make sure that the probability is the same for each label value
-    possible_inds = np.where(
-        (nr_visits <= max_label) & (nr_visits >= min_label)
-    )[0]
-    chosen_ind = np.random.choice(possible_inds)
-    return chosen_ind
+from predict_visits.baselines.knn import KNN
 
 
 def regular_grid(coordinates):
@@ -43,7 +31,7 @@ def regular_grid(coordinates):
         np.std(coordinates[:, 0]),
         np.std(coordinates[:, 1]),
     )
-    factor_std = 1
+    factor_std = 3
     min_x, max_x = (-1 * factor_std * std_x, factor_std * std_x)
     min_y, max_y = (-1 * factor_std * std_y, factor_std * std_y)
     x_range = np.linspace(min_x, max_x, 20)
@@ -72,8 +60,16 @@ def plot_spatial_distribution_3d(
     user_locations,
     user_labels,
     max_label=10,
+    scale=True,
     save_path="outputs/plot3d.png",
 ):
+    if scale:
+        grid_labels = (
+            10
+            * (grid_labels - np.min(grid_labels))
+            / (np.max(grid_labels) - np.min(grid_labels))
+        )
+
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(projection="3d")
     x, y = np.swapaxes(grid_locations, 1, 0)
@@ -160,11 +156,10 @@ if __name__ == "__main__":
 
     test_data_path = args.data_path
     model_path = args.model_path
-    MIN_LABEL = 1
     MAX_LABEL = 10
 
     model, cfg = load_model(model_path)
-    model.eval()
+    model = KNN(1, weighted=False)
     cfg["include_poi"] = False
 
     # add transform function
@@ -205,7 +200,7 @@ if __name__ == "__main__":
         for predict_node in predict_node_feats:
             data = MobilityGraphDataset.transform_to_torch(
                 adj,
-                node_feats,
+                node_feats.copy(),
                 predict_node,
                 cfg["relative_feats"],
                 cfg.get("adj_is_unweighted", True),
@@ -245,5 +240,6 @@ if __name__ == "__main__":
             grid_labels,
             user_locations,
             user_labels,
+            max_label=MAX_LABEL,
             save_path=os.path.join(f"outputs/spatial_eval/plot_3d_{i}"),
         )
