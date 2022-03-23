@@ -126,7 +126,9 @@ if __name__ == "__main__":
                 known_node_feats,
                 predict_node_feats,
                 predict_node_index,
-            ) = MobilityGraphDataset.select_test_node(node_feat, adj)
+            ) = MobilityGraphDataset.select_test_node(
+                node_feat, adj, sampling="balanced"
+            )
             # transform to pytorch geometric data
             data = MobilityGraphDataset.transform_to_torch(
                 adj_trial,
