@@ -70,6 +70,15 @@ def select_node(node_feats_raw, adjacency_raw, take_out_ind):
     return node_feats_raw_graph, adjacency_raw_graph, input_node_raw, gt_label
 
 
+def visit_entropy(visit_numbers, cutoff=10):
+    uni, counts = np.unique(
+        visit_numbers[visit_numbers <= cutoff], return_counts=True
+    )
+    probs = counts / np.sum(counts)
+    entropy = -1 * np.sum([p * np.log2(p) for p in probs])
+    return entropy
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -126,11 +135,11 @@ if __name__ == "__main__":
         # add knn baselines with these cfgs
 
     # # KNNs for best model comparison
-    # cfg_knn = cfg_to_evaluate["final_gcn_k60_2"]
-    # models_to_evaluate["knn_5"] = KNN(5, weighted=False)
-    # cfg_to_evaluate["knn_5"] = cfg_knn
-    # models_to_evaluate["knn_25"] = KNN(25, weighted=False)
-    # cfg_to_evaluate["knn_25"] = cfg_knn
+    cfg_knn = list(cfg_to_evaluate.values())[0]
+    models_to_evaluate["knn_5"] = KNN(5, weighted=False)
+    cfg_to_evaluate["knn_5"] = cfg_knn
+    models_to_evaluate["knn_25"] = KNN(25, weighted=False)
+    cfg_to_evaluate["knn_25"] = cfg_knn
 
     # KNN EVAL:
     # for i in np.arange(1, 28, 2):
@@ -153,6 +162,10 @@ if __name__ == "__main__":
         node_feats_raw = node_feat_list[i]
         adjacency_raw = adjacency_graphs[i]
 
+        user_entropy = visit_entropy(
+            node_feats_raw["out_degree"].values, cutoff=MAX_LABEL
+        )
+
         test_nodes = node_sampling(
             node_feats_raw,
             nr_trials=NR_TRIALS,
@@ -172,6 +185,14 @@ if __name__ == "__main__":
             for model_name, eval_model in models_to_evaluate.items():
                 # get config for preprocessing
                 cfg = cfg_to_evaluate[model_name]
+
+                cfg["include_poi"] = False if "nopoi" in model_name else True
+                cfg["include_time"] = (
+                    True if "starttime" in model_name else False
+                )
+                cfg["include_purpose"] = (
+                    False if "nopurpose" in model_name else True
+                )
 
                 # preprocess graphs manually
                 (
@@ -194,13 +215,11 @@ if __name__ == "__main__":
                 # print(model_name, label_cutoff, gt_label, normed_label)
                 # preprocess the left out node:
                 input_node, _ = MobilityGraphDataset.node_feature_preprocessing(
-                    input_node_raw,
-                    embedding=cfg.get("embedding", "simple"),
-                    stats=stats_and_cutoff[0],
+                    input_node_raw, stats=stats_and_cutoff[0], **cfg
                 )
                 assert input_node.shape[0] == 1
                 predict_node_feats = np.concatenate(
-                    (input_node[0], np.array([normed_label]))
+                    (input_node[0], np.array([0]))
                 )
 
                 data = MobilityGraphDataset.transform_to_torch(
@@ -240,7 +259,7 @@ if __name__ == "__main__":
                 results_by_model[model_name] = model_res
 
             # add trial to results
-            results.append([users[i], gt_label, results_by_model])
+            results.append([users[i], gt_label, results_by_model, user_entropy])
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
 

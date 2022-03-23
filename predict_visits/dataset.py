@@ -173,6 +173,7 @@ class MobilityGraphDataset(InMemoryDataset):
         include_dist=True,
         include_poi=True,
         include_time=False,
+        **kwargs,
     ):
         # transform geographic_coordinates
         coords_raw = np.array(node_feat_df[["x_normed", "y_normed"]])
@@ -240,7 +241,7 @@ class MobilityGraphDataset(InMemoryDataset):
             feature_matrix,
             feat_stats,
         ) = MobilityGraphDataset.node_feature_preprocessing(
-            node_feature_df, embedding=embedding
+            node_feature_df, embedding=embedding, **kwargs
         )
         # NOTE: out-degree is in-degree!
         label = node_feature_df["out_degree"].values
