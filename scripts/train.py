@@ -38,10 +38,21 @@ model_cfg["historic_input"] = cfg["historic_input"]  # model-specific args
 cfg["model_cfg"] = model_cfg
 print("config:", cfg)
 
+# current experimental setting
+cfg["root"] = "data/1bin"
+cfg["include_poi"] = False
+if args.relative_feats:
+    cfg["model_cfg"]["new_loc_feat_dim"] = 7
+
 model_name = args.save_name
 
 # data files must exist in directory data
-train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
+train_data_files = [
+    "t120_1bin_gc1.pkl",
+    "t120_1bin_yumuv_graph_rep.pkl",
+    "t120_1bin_tist_toph1000.pkl",
+    "t120_1bin_geolife.pkl",
+]
 # all datasets
 # [
 #     "t120_gc1_poi.pkl",
@@ -49,7 +60,8 @@ train_data_files = ["t120_gc1_poi.pkl", "t120_yumuv_graph_rep_poi.pkl"]
 #     "t120_tist_toph100.pkl",
 #     "t120_tist_random100.pkl",
 # ]
-test_data_files = ["t120_gc2_poi.pkl"]
+test_data_files = ["t120_1bin_gc2.pkl"]
+# ["t120_gc2_poi.pkl"]
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs
 batch_size = args.batch_size
@@ -70,11 +82,11 @@ os.makedirs("trained_models", exist_ok=True)
 os.makedirs(out_path, exist_ok=True)
 
 # Train on GC1, GC2 and YUMUV
-train_data = MobilityGraphDataset(train_data_files, device=device, **vars(args))
+train_data = MobilityGraphDataset(train_data_files, device=device, **cfg)
 train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 
 # Test on Geolife
-test_data = MobilityGraphDataset(test_data_files, device=device, **vars(args))
+test_data = MobilityGraphDataset(test_data_files, device=device, **cfg)
 
 # Create model - input dimension is the number of features
 model = NeuralModel(train_data.num_feats, **cfg["model_cfg"]).to(device)

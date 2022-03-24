@@ -45,14 +45,7 @@ class MobilityGraphDataset(InMemoryDataset):
         transform=None,
         pre_transform=None,
         ratio_predict=0.1,
-        label_cutoff=10,
-        nr_keep=50,
-        min_label=1,
-        log_labels=False,
-        adj_is_unweighted=True,
-        adj_is_symmetric=True,
         relative_feats=False,
-        embedding="simple",
         **kwargs,
     ):
         """
@@ -62,11 +55,7 @@ class MobilityGraphDataset(InMemoryDataset):
             root, transform, pre_transform
         )
         self.relative_feats = relative_feats
-        self.adj_is_unweighted = adj_is_unweighted
-        self.adj_is_symmetric = adj_is_symmetric
-        self.nr_keep = nr_keep
         self.ratio_predict = ratio_predict
-        self.min_label = min_label
         self.device = device
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
@@ -80,12 +69,7 @@ class MobilityGraphDataset(InMemoryDataset):
         for i in range(len(self.users)):
             # process all graphs
             nf_one, adj_one, _ = self.graph_preprocessing(
-                adjacency_graphs[i],
-                node_feat_list[i],
-                label_cutoff=label_cutoff,
-                nr_keep=nr_keep,
-                log_labels=log_labels,
-                embedding=embedding,
+                adjacency_graphs[i], node_feat_list[i], **kwargs
             )
             self.node_feats.append(nf_one)
             self.adjacency.append(adj_one)
@@ -93,7 +77,7 @@ class MobilityGraphDataset(InMemoryDataset):
         self.nr_graphs = len(self.adjacency)
 
         # store the feature dimension and normalization stats
-        self.num_feats = self.node_feats[0].shape[1]
+        self.num_feats = self[0].x.size()[-1]
         print("Number samples after preprocessing", len(self.node_feats))
 
     def split_graphs_v1(self, node_feats, adjacency):
@@ -341,8 +325,15 @@ class MobilityGraphDataset(InMemoryDataset):
 
         # transform node features to relative node features wrt new loc
         if relative_feats:
-            known_node_feats[:, :-1] = (
-                known_node_feats[:, :-1] - label_node_feats[:, :-1]
+            # known_node_feats[:, :-1] = (
+            #     known_node_feats[:, :-1] - label_node_feats[:, :-1]
+            # )
+            known_node_feats = torch.cat(
+                (
+                    known_node_feats[:, :-1] - label_node_feats[:, :-1],
+                    known_node_feats,
+                ),
+                dim=1,
             )
 
         data_sample = torch_geometric.data.Data(
@@ -358,7 +349,7 @@ class MobilityGraphDataset(InMemoryDataset):
         return data_sample
 
     @staticmethod
-    def select_test_node(node_feat, adj, min_lab=0, sampling="uniform"):
+    def select_test_node(node_feat, adj, min_lab=0, sampling="balanced"):
         label_col = node_feat[:, -1]
         # Divide into the known and unkown nodes
         possible_nodes = np.where((label_col >= min_lab) & (label_col <= 1))[0]
