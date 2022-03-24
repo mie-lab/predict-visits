@@ -43,6 +43,7 @@ sp_name_dict = {
     "geolife": "staypoints_extent",
     "tist_toph100": "staypoints_extent",
     "tist_random100": "staypoints",
+    "tist_toph1000": "staypoints",
 }
 locs_name_dict = {
     "gc1": "locations_extent",
@@ -51,6 +52,7 @@ locs_name_dict = {
     "geolife": "locations_extent",
     "tist_toph100": "locations_extent",
     "tist_random100": "locations",
+    "tist_toph1000": "locations",
 }
 
 
@@ -366,12 +368,19 @@ if __name__ == "__main__":
         default=600,
         help="Time period for one graph (in number of days)",
     )
+    parser.add_argument(
+        "-b",
+        "--one_bin_per_user",
+        type=int,
+        default=1,
+        help="set to 0 if one user can appear multiple times",
+    )
     args = parser.parse_args()
 
     min_nodes = args.node_thresh
     save_name = args.save_name
 
-    studies = ["tist_random100"]
+    studies = ["tist_toph1000" "gc1", "gc2", "yumuv_graph_rep", "geolife"]
 
     for study in studies:
         print("--------- Start {} --------------".format(study))
@@ -464,6 +473,9 @@ if __name__ == "__main__":
                 # Preprocessing graphs:
                 graph = delete_zero_edges(graph)
                 if graph.number_of_nodes() < min_nodes:
+                    print(
+                        f"zero edges or not enough nodes for {study} user {user_id}"
+                    )
                     continue
                 graph = get_largest_component(graph)
                 graph = remove_loops(graph)
@@ -510,6 +522,9 @@ if __name__ == "__main__":
                 user_id_list.append(f"{study}_{user_id}_{k}")
                 adjacency_list.append(adjacency)
                 node_feat_list.append(node_feat_df)
+                # break after we found one working time period for the user:
+                if args.one_bin_per_user:
+                    break
 
         with open(
             os.path.join("data", f"{save_name}_{study}.pkl"), "wb"
