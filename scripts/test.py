@@ -251,7 +251,7 @@ if __name__ == "__main__":
                 error = np.abs(unnormed_pred - gt_label)
 
                 model_res = {}
-                model_res["lab"] = lab.item()
+                model_res["lab"] = normed_label
                 model_res["pred"] = pred.item()
                 model_res["raw_pred"] = unnormed_pred
                 model_res["loss"] = loss
