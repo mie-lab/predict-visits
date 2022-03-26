@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
-    cfg_to_evaluate = {"simple_median": {}}
+    cfg_to_evaluate = {"simple_median": {"include_poi": False}}
     transform = {}
 
     # add trained model
@@ -132,10 +132,8 @@ if __name__ == "__main__":
         transform_for_model = model_cfg.get("inp_transform", NoTransform)
         transform[model_name] = transform_for_model(**cfg)
 
-        # add knn baselines with these cfgs
-
     # # KNNs for best model comparison
-    cfg_knn = list(cfg_to_evaluate.values())[0]
+    cfg_knn = cfg.copy()  # use last cfg of the models
     models_to_evaluate["knn_5"] = KNN(5, weighted=False)
     cfg_to_evaluate["knn_5"] = cfg_knn
     models_to_evaluate["knn_25"] = KNN(25, weighted=False)
@@ -185,14 +183,6 @@ if __name__ == "__main__":
             for model_name, eval_model in models_to_evaluate.items():
                 # get config for preprocessing
                 cfg = cfg_to_evaluate[model_name]
-
-                cfg["include_poi"] = False if "nopoi" in model_name else True
-                cfg["include_time"] = (
-                    True if "starttime" in model_name else False
-                )
-                cfg["include_purpose"] = (
-                    False if "nopurpose" in model_name else True
-                )
 
                 # preprocess graphs manually
                 (

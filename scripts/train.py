@@ -24,6 +24,7 @@ parser.add_argument("-b", "--batch_size", default=8, type=int)
 parser.add_argument("-c", "--label_cutoff", default=0.95, type=float)
 parser.add_argument("-z", "--embedding", default="simple", type=str)
 parser.add_argument("-i", "--historic_input", default=10, type=int)
+parser.add_argument("-p", "--sampling", default="normal", type=str)
 parser.add_argument("-s", "--save_name", default="model", type=str)
 args = parser.parse_args()
 
@@ -41,8 +42,6 @@ print("config:", cfg)
 # current experimental setting
 cfg["root"] = "data/1bin"
 cfg["include_poi"] = False
-if args.relative_feats:
-    cfg["model_cfg"]["new_loc_feat_dim"] = 7
 
 model_name = args.save_name
 

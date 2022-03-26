@@ -15,10 +15,9 @@ def load_model(model_path):
     # get info which model to use
     cfg_model = model_dict[cfg["model"]]
     NeuralModel = cfg_model["model_class"]
-    cfg_model["model_cfg"]["historic_input"] = cfg.get("historic_input", 7)
 
     # init model
-    model = NeuralModel(cfg["nr_features"], **cfg_model["model_cfg"])
+    model = NeuralModel(cfg["nr_features"], **cfg["model_cfg"])
 
     # load checkpoint
     model_checkpoint = torch.load(

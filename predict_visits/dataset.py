@@ -46,6 +46,7 @@ class MobilityGraphDataset(InMemoryDataset):
         pre_transform=None,
         ratio_predict=0.1,
         relative_feats=False,
+        sampling="normal",
         **kwargs,
     ):
         """
@@ -55,6 +56,7 @@ class MobilityGraphDataset(InMemoryDataset):
             root, transform, pre_transform
         )
         self.relative_feats = relative_feats
+        self.sampling = sampling
         self.ratio_predict = ratio_predict
         self.device = device
         # Load data - Note: adjacency is a list of adjacency matrices, and
@@ -325,16 +327,17 @@ class MobilityGraphDataset(InMemoryDataset):
 
         # transform node features to relative node features wrt new loc
         if relative_feats:
-            # known_node_feats[:, :-1] = (
-            #     known_node_feats[:, :-1] - label_node_feats[:, :-1]
-            # )
-            known_node_feats = torch.cat(
-                (
-                    known_node_feats[:, :-1] - label_node_feats[:, :-1],
-                    known_node_feats,
-                ),
-                dim=1,
+            known_node_feats[:, :-1] = (
+                known_node_feats[:, :-1] - label_node_feats[:, :-1]
             )
+            # # to embed both relfeat and norelfeat
+            # known_node_feats = torch.cat(
+            #     (
+            #         known_node_feats[:, :-1] - label_node_feats[:, :-1],
+            #         known_node_feats,
+            #     ),
+            #     dim=1,
+            # )
 
         data_sample = torch_geometric.data.Data(
             x=known_node_feats.float(),
@@ -350,6 +353,7 @@ class MobilityGraphDataset(InMemoryDataset):
 
     @staticmethod
     def select_test_node(node_feat, adj, min_lab=0, sampling="balanced"):
+        """sampling: one of balanced, value_based or normal"""
         label_col = node_feat[:, -1]
         # Divide into the known and unkown nodes
         possible_nodes = np.where((label_col >= min_lab) & (label_col <= 1))[0]
@@ -394,7 +398,7 @@ class MobilityGraphDataset(InMemoryDataset):
 
         # select one node as test node and remove it from the graph
         (adj, known_node_feats, predict_node_feats, _) = self.select_test_node(
-            node_feat, adj
+            node_feat, adj, sampling=self.sampling
         )
 
         # transform to pytorch geometric data
