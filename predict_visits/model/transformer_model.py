@@ -60,7 +60,7 @@ class TransformerModel(nn.Module):
         # the features of the test location)
 
         # 2. feed forward
-        x = self.final_residual(out[:, -1, :])
+        x = self.final_residual(out[-1]) # use last sequence element
         x = self.final_norm(x)
         x = self.final_layer(x)
 
@@ -87,7 +87,7 @@ class Transformer(nn.Module):
             activation="gelu",
             dim_feedforward=dim_feedforward,
             dropout=dropout,
-            batch_first=True,
+            # batch_first=True, # only pytorch 1.8.1 onwards
         )
         encoder_norm = torch.nn.LayerNorm(d_input)
         self.encoder = torch.nn.TransformerEncoder(
