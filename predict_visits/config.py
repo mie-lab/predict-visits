@@ -29,8 +29,12 @@ model_dict = {
         "inp_transform": TransformFF,
         "model_cfg": {
             "out_dim": 1,
-            "flatten": False # this is for the input transform
-            # TODO: add further details for the model, like number of layers
+            "flatten": False,  # this is for the input transform
+            # transformer
+            "nhead": 8,
+            "dim_feedforward": 256,
+            "dropout": 0.1,
+            "num_layers": 6,
         },
     },
 }
