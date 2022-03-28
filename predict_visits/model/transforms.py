@@ -32,7 +32,7 @@ class TransformFF:
         if self.flatten:
             loc_sequence = loc_sequence.reshape(batch_size, -1)
         else:
-            loc_sequence = torch.swapaxes(loc_sequence, 1, 0)
+            loc_sequence = torch.transpose(loc_sequence, 1, 0)
         return loc_sequence
 
 
