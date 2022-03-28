@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import math
 from torch import Tensor
 
 
@@ -24,6 +25,7 @@ class TransformerModel(nn.Module):
             dim_feedforward=dim_feedforward,
             d_input=num_feats,
         )
+        self.pos_encoder = PositionalEncoding(num_feats, dropout)
 
         # feel free to delete or change this layer:
         # final
@@ -42,7 +44,8 @@ class TransformerModel(nn.Module):
         # corresponds to (batch_size, number input locations, number features)
 
         # 1. transformer for old_loc
-        # (question: is the time-series sorted?)
+
+        x = self.pos_encoder(x * math.sqrt(self.num_feats))
 
         # src_mask is to ensure the model does not look into the future,
         # but we do not need this, as we have no sequence info (?)
@@ -97,4 +100,25 @@ class Transformer(nn.Module):
         """Forward pass of the network."""
         return self.encoder(
             input, mask=src_mask, src_key_padding_mask=src_padding_mask
+        )
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, emb_size: int, dropout: float, maxlen: int = 5000):
+        super(PositionalEncoding, self).__init__()
+        den = torch.exp(
+            -torch.arange(0, emb_size, 2) * math.log(10000) / emb_size
+        )
+        pos = torch.arange(0, maxlen).reshape(maxlen, 1)
+        pos_embedding = torch.zeros((maxlen, emb_size))
+        pos_embedding[:, 0::2] = torch.sin(pos * den)
+        pos_embedding[:, 1::2] = torch.cos(pos * den)
+        pos_embedding = pos_embedding.unsqueeze(-2)
+
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer("pos_embedding", pos_embedding)
+
+    def forward(self, token_embedding: Tensor):
+        return self.dropout(
+            token_embedding + self.pos_embedding[: token_embedding.size(0), :]
         )
