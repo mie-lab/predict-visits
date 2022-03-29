@@ -131,7 +131,7 @@ if __name__ == "__main__":
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
     cfg_to_evaluate = {"simple_median": {"include_poi": False}}
-    transform = {}
+    transform = {"simple_median": NoTransform()}
 
     # add trained model
     for model_name in os.listdir(os.path.join("trained_models", model_path)):
@@ -144,7 +144,7 @@ if __name__ == "__main__":
         # add transform function
         model_cfg = model_dict[cfg["model"]]
         transform_for_model = model_cfg.get("inp_transform", NoTransform)
-        transform[model_name] = transform_for_model(**cfg)
+        transform[model_name] = transform_for_model(**cfg["model_cfg"])
 
     # # KNNs for best model comparison
     cfg_knn = cfg.copy()  # use last cfg of the models
