@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.nn.conv import GCNConv, ChebConv
 
+from predict_visits.model.embedding_model import EmbeddingModel
+
 
 class Kipfblock(torch.nn.Module):
     """GCN Block based on Thomas N Kipf and Max Welling,  Semi-supervised
@@ -183,10 +185,11 @@ class VisitPredictionModel(nn.Module):
         graph_enc_dim=64,
         graph_layers: Union[int, List[int]] = 42,
         graph_k: int = 4,
-        inp_embed_dim=64,
+        inp_embed_dim=32,
         ff_layers: List[int] = [64, 32],
         adj_is_symmetric=True,
         dropout_prob=0,
+        embed_features=False,
         **kwargs
     ):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
@@ -206,10 +209,12 @@ class VisitPredictionModel(nn.Module):
         )
         if new_loc_feat_dim is None:
             new_loc_feat_dim = node_feat_dim - 1
+
+        self.embed_module = EmbeddingModel(node_feat_dim - 1, inp_embed_dim)
         # second input processing:
-        self.embed_layer = nn.Linear(new_loc_feat_dim, inp_embed_dim)
+        # self.embed_layer = nn.Linear(new_loc_feat_dim, inp_embed_dim)
         # first forward layer
-        first_layer_size = graph_enc_dim + inp_embed_dim
+        first_layer_size = graph_enc_dim + node_feat_dim - 1
         self.ff_layers = nn.ModuleList(
             [nn.Linear(first_layer_size, ff_layers[0])]
         )
@@ -220,12 +225,15 @@ class VisitPredictionModel(nn.Module):
 
     def forward(self, data):
         # 1. Graph processing - node embeddings
+        embedded_feats = self.embed_module(data.x[:, :-1])
+        data.x = torch.cat((embedded_feats, data.x[:, -1:]), dim=-1)
+
         graph_embed = self.graph_module(data)
         graph_embed = global_mean_pool(graph_embed, data.batch)
 
         # 2. processing of separate input
         separate_input = data.y[:, :-1]
-        inp_embed = self.embed_layer(separate_input)
+        inp_embed = self.embed_module(separate_input)
 
         # concat both
         x = torch.cat((graph_embed, inp_embed), dim=1)
