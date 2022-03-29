@@ -191,7 +191,7 @@ class MobilityGraphDataset(InMemoryDataset):
         # Average start time (average is a very bad feature, refine that later)
         # use sinuoidal transform to express 0:00 == 23:59:99
         if include_time:
-            started = node_feat_df["started_at"].values
+            started = node_feat_df["avg_started_at"].values  # Problem
             sin_start = np.sin(2 * np.pi * started / 24)
             cos_start = np.cos(2 * np.pi * started / 24)
             start_time_arr = np.vstack([sin_start, cos_start]).swapaxes(1, 0)
@@ -230,7 +230,7 @@ class MobilityGraphDataset(InMemoryDataset):
             node_feature_df, embedding=embedding, **kwargs
         )
         # NOTE: out-degree is in-degree!
-        label = node_feature_df["out_degree"].values
+        label = get_visits(node_feature_df)
 
         # 2) crop or pad adjacency matrix to the x nodes with highest degree
         overall_degree = (
@@ -380,7 +380,7 @@ class MobilityGraphDataset(InMemoryDataset):
                 ]
             predict_node = np.random.choice(possible_nodes, p=probs)
 
-        known_nodes = [i for i in range(len(node_feat)) if i != predict_node]
+        known_nodes = np.delete(np.arange(len(node_feat)), predict_node)
 
         # restrict feats to known nodes and convert to torch
         known_node_feats = node_feat[known_nodes]

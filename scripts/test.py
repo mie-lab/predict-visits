@@ -10,7 +10,7 @@ from predict_visits.model.transforms import NoTransform
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
-from predict_visits.utils import load_model
+from predict_visits.utils import load_model, get_visits
 from predict_visits.config import model_dict
 
 
@@ -23,15 +23,16 @@ def node_sampling(
     """
     node_feats_raw["artificial_index"] = np.arange(len(node_feats_raw))
     # the test node must fulfill some conditions
+    raw_labels = get_visits(node_feats_raw)
     conditions = (
         (node_feats_raw["distance"] < dist_thresh * 1000)
-        & (node_feats_raw["out_degree"] <= max_label)
-        & (node_feats_raw["out_degree"] >= min_label)
+        & (raw_labels <= max_label)
+        & (raw_labels >= min_label)
     )
     eligible_rows = node_feats_raw[conditions]
 
     # sample with prob such that label values have same prob to appear
-    nr_visit_col = eligible_rows["out_degree"].values
+    nr_visit_col = get_visits(eligible_rows)
     uni, counts = np.unique(nr_visit_col, return_counts=True)
     assert len(uni) <= (max_label - min_label + 1)
     prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
@@ -65,7 +66,7 @@ def select_node(node_feats_raw, adjacency_raw, take_out_ind):
     adjacency_raw_graph = adjacency_raw_graph[:, use_nodes]
 
     input_node_raw = node_feats_raw.iloc[take_out_ind : take_out_ind + 1]
-    gt_label = input_node_raw["out_degree"].values[0]
+    gt_label = get_visits(input_node_raw)[0]
 
     return node_feats_raw_graph, adjacency_raw_graph, input_node_raw, gt_label
 
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
     cfg_to_evaluate = {"simple_median": {"include_poi": False}}
-    transform = {"simple_median": NoTransform()}
+    transform = {}
 
     # add trained model
     for model_name in os.listdir(os.path.join("trained_models", model_path)):
@@ -175,7 +176,7 @@ if __name__ == "__main__":
         adjacency_raw = adjacency_graphs[i]
 
         user_entropy = visit_entropy(
-            node_feats_raw["out_degree"].values, cutoff=MAX_LABEL
+            get_visits(node_feats_raw), cutoff=MAX_LABEL
         )
 
         test_nodes = node_sampling(

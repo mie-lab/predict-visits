@@ -10,7 +10,7 @@ import torch
 
 from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.dataset import MobilityGraphDataset
-from predict_visits.utils import get_label, load_model
+from predict_visits.utils import load_model, get_visits
 from predict_visits.config import model_dict
 from predict_visits.model.transforms import NoTransform
 from predict_visits.baselines.knn import KNN
@@ -225,7 +225,7 @@ if __name__ == "__main__":
         grid_labels = np.array(grid_labels)
         grid_locations = np.array(fake_node_df[["x_normed", "y_normed"]])
         user_locations = np.array(node_feats_raw[["x_normed", "y_normed"]])
-        user_labels = np.array(node_feats_raw[["out_degree"]])
+        user_labels = np.array(get_visits(node_feats_raw))
 
         plot_spatial_distribution_2d(
             grid_locations,

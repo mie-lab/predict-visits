@@ -52,15 +52,22 @@ def load_model(model_path):
     return model, cfg
 
 
+def get_visits(node_feat_df):
+    return np.max(node_feat_df[["in_degree", "out_degree"]].values, axis=1)
+
+
 def get_home_node(adjacency):
     # find home node
-    out_degrees = np.array(np.sum(adjacency, axis=1))
-    return np.argmax(out_degrees)
+    visit_nr = get_visits_adj(adjacency)
+    return np.argmax(visit_nr)
 
 
-def get_label(adjacency):
+def get_visits_adj(adjacency):
     # get the indegrees
-    return np.array(np.sum(adjacency, axis=0))[0]
+    ind = np.array(np.sum(adjacency, axis=0))[0]
+    # get out degrees
+    outd = np.array(np.sum(adjacency, axis=1)).flatten()
+    np.max(np.vstack((ind, outd)), axis=0)
 
 
 def normalize_adj(adj):

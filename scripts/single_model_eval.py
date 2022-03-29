@@ -14,7 +14,7 @@ from predict_visits.dataset import MobilityGraphDataset
 
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
-from predict_visits.utils import get_label, load_model
+from predict_visits.utils import load_model, get_visits_adj
 
 from predict_visits.config import model_dict
 
@@ -115,7 +115,7 @@ if __name__ == "__main__":
         )
 
         # preprocess labels and upper bound on labels
-        raw_labels = get_label(adj)
+        raw_labels = get_visits_adj(adj)
         label_cutoff = MobilityGraphDataset.prep_cutoff(
             raw_labels, cfg.get("label_cutoff", 0.95), cfg["log_labels"]
         )
