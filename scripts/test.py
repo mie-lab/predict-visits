@@ -79,6 +79,20 @@ def visit_entropy(visit_numbers, cutoff=10):
     return entropy
 
 
+def compute_dist_locs(input_node_feats, historic_node_feats):
+    coords_hist = np.array(historic_node_feats[["x_normed", "y_normed"]])
+    coords_input = np.array(input_node_feats[["x_normed", "y_normed"]])
+    dist = np.sqrt(np.sum((coords_hist - coords_input) ** 2, 1))
+    median_dist = np.median(dist)
+    return median_dist
+
+
+def compute_diff_locs(input_node_feats, historic_node_feats):
+    dist = np.sqrt(np.sum((historic_node_feats - input_node_feats) ** 2, 1))
+    median_dist = np.median(dist)
+    return median_dist
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -179,6 +193,9 @@ if __name__ == "__main__":
                 gt_label,
             ) = select_node(node_feats_raw, adjacency_raw, take_out_ind)
 
+            # compute difference of sampled node from others:
+            dist_from_locs = compute_dist_locs(input_node_raw, node_feats_raw)
+
             results_by_model = {}
             for model_name, eval_model in models_to_evaluate.items():
                 # get config for preprocessing
@@ -207,6 +224,10 @@ if __name__ == "__main__":
                 input_node, _ = MobilityGraphDataset.node_feature_preprocessing(
                     input_node_raw, stats=stats_and_cutoff[0], **cfg
                 )
+                diff_from_locs = compute_diff_locs(
+                    input_node, node_feat[:, :-1]
+                )
+
                 assert input_node.shape[0] == 1
                 predict_node_feats = np.concatenate(
                     (input_node[0], np.array([0]))
@@ -249,7 +270,16 @@ if __name__ == "__main__":
                 results_by_model[model_name] = model_res
 
             # add trial to results
-            results.append([users[i], gt_label, results_by_model, user_entropy])
+            results.append(
+                [
+                    users[i],
+                    gt_label,
+                    results_by_model,
+                    user_entropy,
+                    dist_from_locs,
+                    diff_from_locs,
+                ]
+            )
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
 
