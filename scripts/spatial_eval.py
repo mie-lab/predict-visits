@@ -185,6 +185,8 @@ if __name__ == "__main__":
         ) = MobilityGraphDataset.graph_preprocessing(
             adjacency_raw, node_feats_raw, **cfg
         )
+        # get labels back to positive values
+        node_feats[:, -1] = np.abs(node_feats[:, -1])
         label_cutoff = stats_and_cutoff[1]
 
         # preprocess the left out node:

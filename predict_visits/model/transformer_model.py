@@ -16,7 +16,7 @@ class TransformerModel(nn.Module):
         **kwargs
     ) -> None:
         super(TransformerModel, self).__init__()
-        self.num_feats = num_feats  # by default 24
+        self.num_feats = num_feats
 
         self.model = Transformer(
             num_layers=num_layers,
@@ -60,7 +60,7 @@ class TransformerModel(nn.Module):
         # the features of the test location)
 
         # 2. feed forward
-        x = self.final_residual(out[-1]) # use last sequence element
+        x = self.final_residual(out[-1])  # use last sequence element
         x = self.final_norm(x)
         x = self.final_layer(x)
 

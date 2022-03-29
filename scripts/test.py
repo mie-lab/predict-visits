@@ -15,7 +15,12 @@ from predict_visits.config import model_dict
 
 
 def node_sampling(
-    node_feats_raw, nr_trials=1, min_label=1, max_label=10, dist_thresh=500
+    node_feats_raw,
+    nr_trials=1,
+    min_label=1,
+    max_label=10,
+    dist_thresh=500,
+    exclude_days=7,
 ):
     """
     Select test node from the (unprocessed) graph for the analysis
@@ -28,27 +33,20 @@ def node_sampling(
         (node_feats_raw["distance"] < dist_thresh * 1000)
         & (raw_labels <= max_label)
         & (raw_labels >= min_label)
+        & (node_feats_raw["occured_after_days"] > exclude_days)
     )
     eligible_rows = node_feats_raw[conditions]
 
     # sample with prob such that label values have same prob to appear
     nr_visit_col = get_visits(eligible_rows)
-    uni, counts = np.unique(nr_visit_col, return_counts=True)
-    assert len(uni) <= (max_label - min_label + 1)
-    prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
-    probs = np.array([prob_per_count[l] for l in nr_visit_col])
-
-    # to artificially include always the labels >10:
-    # probs[nr_visit_col > 10] = 1000
-
-    probs = probs / np.sum(probs)
-    # sample
-    test_node_indices = np.random.choice(
-        eligible_rows["artificial_index"].values,
-        size=min([nr_trials, len(eligible_rows)]),
-        p=probs,
-        replace=False,
+    possible_nodes_col = eligible_rows["artificial_index"].values
+    test_node_indices = MobilityGraphDataset.node_sampling(
+        nr_visit_col,
+        possible_nodes_col,
+        nr_sample=nr_trials,
+        sampling="balanced",
     )
+
     return test_node_indices
 
 
@@ -210,6 +208,8 @@ if __name__ == "__main__":
                 ) = MobilityGraphDataset.graph_preprocessing(
                     adjacency_raw_graph, node_feats_raw_graph, **cfg
                 )
+                # get labels back to positive values
+                node_feat[:, -1] = np.abs(node_feat[:, -1])
 
                 # preprocess labels and upper bound on labels
                 label_cutoff = stats_and_cutoff[1]

@@ -110,15 +110,15 @@ if __name__ == "__main__":
 
     for i in range(len(users)):
         # preprocess graphs manually
-        node_feat, adj, _ = MobilityGraphDataset.graph_preprocessing(
+        (
+            node_feat,
+            adj,
+            stats_and_cutoff,
+        ) = MobilityGraphDataset.graph_preprocessing(
             adjacency_graphs[i], node_feat_list[i], **cfg
         )
+        label_cutoff = stats_and_cutoff[1]
 
-        # preprocess labels and upper bound on labels
-        raw_labels = get_visits_adj(adj)
-        label_cutoff = MobilityGraphDataset.prep_cutoff(
-            raw_labels, cfg.get("label_cutoff", 0.95), cfg["log_labels"]
-        )
         # select test node
         for k in range(nr_trials):
             (
@@ -158,8 +158,13 @@ if __name__ == "__main__":
                     label_cutoff,
                     cfg["log_labels"],
                 )
+                unnormed_lab = MobilityGraphDataset.unnorm_label(
+                    lab.item(),
+                    label_cutoff,
+                    cfg["log_labels"],
+                )
 
-                error = np.abs(unnormed_pred - raw_labels[predict_node_index])
+                error = np.abs(unnormed_pred - unnormed_lab)
 
                 model_res = {}
                 model_res["pred"] = pred.item()
@@ -169,9 +174,7 @@ if __name__ == "__main__":
                 results_by_model[model_name] = model_res
 
             # add trial to results
-            results.append(
-                [lab.item(), raw_labels[predict_node_index], results_by_model]
-            )
+            results.append([lab.item(), unnormed_lab, results_by_model])
 
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)

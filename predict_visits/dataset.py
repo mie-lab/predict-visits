@@ -215,6 +215,7 @@ class MobilityGraphDataset(InMemoryDataset):
         dist_thresh=500,
         log_labels=False,
         embedding="simple",
+        exclude_days=7,
         **kwargs,
     ):
         """
@@ -229,7 +230,8 @@ class MobilityGraphDataset(InMemoryDataset):
         ) = MobilityGraphDataset.node_feature_preprocessing(
             node_feature_df, embedding=embedding, **kwargs
         )
-        # NOTE: out-degree is in-degree!
+
+        # get label: number of visits per location
         label = get_visits(node_feature_df)
 
         # 2) crop or pad adjacency matrix to the x nodes with highest degree
@@ -264,6 +266,14 @@ class MobilityGraphDataset(InMemoryDataset):
         label = MobilityGraphDataset.norm_label(
             label, cutoff, log_labels=log_labels
         )
+
+        # hack for labels: make the ones of the first two weeks negative so
+        # that we can exclude those later
+        first_weeks = (
+            node_feature_df["occured_after_days"] < exclude_days
+        ).astype(int) * (-1)
+        assert np.all(label > 0)
+        label = label * first_weeks.values[use_nodes]
 
         # concatenate the other features with the labels and append
         concat_feats_labels = np.concatenate(
@@ -352,6 +362,29 @@ class MobilityGraphDataset(InMemoryDataset):
         return data_sample
 
     @staticmethod
+    def node_sampling(
+        label_subset, possible_nodes, nr_sample=1, sampling="balanced"
+    ):
+        if sampling == "balanced":
+            # balanced sampling (each visit number equally likely)
+            uni, counts = np.unique(label_subset, return_counts=True)
+            prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
+            probs = np.array([prob_per_count[l] for l in label_subset])
+            probs = probs / np.sum(probs)
+        elif sampling == "value_based":
+            # scale probability with label (ind of occurence)
+            probs = label_subset / np.sum(label_subset)
+        else:
+            probs = [1 / len(label_subset) for _ in range(len(label_subset))]
+        # sample can be at most all of the possible ones
+        nr_sample = min([nr_sample, len(possible_nodes)])
+        # random choice
+        predict_node = np.random.choice(
+            possible_nodes, size=nr_sample, p=probs, replace=False
+        )
+        return predict_node
+
+    @staticmethod
     def select_test_node(node_feat, adj, min_lab=0, sampling="balanced"):
         """sampling: one of balanced, value_based or normal"""
         label_col = node_feat[:, -1]
@@ -361,26 +394,13 @@ class MobilityGraphDataset(InMemoryDataset):
             # if doesn't work, just pick any (should not happen often)
             predict_node = np.random.randint(0, len(node_feat))
         else:
-            if sampling == "balanced":
-                # balanced sampling (each visit number equally likely)
-                label_subset = label_col[possible_nodes]
-                uni, counts = np.unique(label_subset, return_counts=True)
-                prob_per_count = {
-                    uni[i]: 1 / counts[i] for i in range(len(uni))
-                }
-                probs = np.array([prob_per_count[l] for l in label_subset])
-                probs = probs / np.sum(probs)
-            elif sampling == "value_based":
-                # scale probability with label (ind of occurence)
-                label_subset = label_col[possible_nodes]
-                probs = label_subset / np.sum(label_subset)
-            else:
-                probs = [
-                    1 / len(possible_nodes) for _ in range(len(possible_nodes))
-                ]
-            predict_node = np.random.choice(possible_nodes, p=probs)
-
+            predict_node = MobilityGraphDataset.node_sampling(
+                label_col[possible_nodes], possible_nodes, sampling=sampling
+            )[0]
         known_nodes = np.delete(np.arange(len(node_feat)), predict_node)
+
+        # get labels back to positive values
+        node_feat[:, -1] = np.abs(node_feat[:, -1])
 
         # restrict feats to known nodes and convert to torch
         known_node_feats = node_feat[known_nodes]
