@@ -14,7 +14,9 @@ from predict_visits.config import model_dict
 
 # model name is desired one
 parser = argparse.ArgumentParser()
-parser.add_argument("-m", "--model", default="gcn", type=str, help="model type")
+parser.add_argument(
+    "-m", "--model", default="transformer", type=str, help="model type"
+)
 parser.add_argument("-l", "--log_labels", default=1, type=int, help="apply log")
 parser.add_argument("-k", "--nr_keep", default=60, type=int, help="graph size")
 parser.add_argument("-r", "--learning_rate", default=1e-4, type=float)
@@ -27,10 +29,6 @@ parser.add_argument("-i", "--historic_input", default=10, type=int)
 parser.add_argument("-s", "--save_name", default="model", type=str)
 args = parser.parse_args()
 
-# get basic classes / functions
-NeuralModel = model_dict[args.model]["model_class"]
-inp_transform = model_dict[args.model]["inp_transform"](**vars(args))
-
 # define config
 cfg = vars(args)
 model_cfg = model_dict[args.model]["model_cfg"]
@@ -38,6 +36,9 @@ model_cfg["historic_input"] = cfg["historic_input"]  # model-specific args
 cfg["model_cfg"] = model_cfg
 print("config:", cfg)
 
+# get basic classes / functions
+NeuralModel = model_dict[args.model]["model_class"]
+inp_transform = model_dict[args.model]["inp_transform"](**model_cfg)
 model_name = args.save_name
 
 # data files must exist in directory data
@@ -79,6 +80,10 @@ test_data = MobilityGraphDataset(test_data_files, device=device, **vars(args))
 # Create model - input dimension is the number of features
 model = NeuralModel(train_data.num_feats, **cfg["model_cfg"]).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+
+# number of parameters
+total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(total_params)
 
 r3 = lambda x: round(x * 100, 2)  # round function for printing
 
