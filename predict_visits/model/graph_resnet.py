@@ -176,7 +176,7 @@ class GraphResnet(torch.nn.Module):
         return x
 
 
-class VisitPredictionModel(nn.Module):
+class GCNModel(nn.Module):
     def __init__(
         self,
         node_feat_dim,
@@ -191,7 +191,7 @@ class VisitPredictionModel(nn.Module):
         **kwargs
     ):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
-        super(VisitPredictionModel, self).__init__()
+        super(GCNModel, self).__init__()
         self.norm = "sym" if adj_is_symmetric else "rw"
         self.dropout_prob = dropout_prob
 
@@ -246,7 +246,7 @@ if __name__ == "__main__":
 
     dataset = MobilityGraphDataset(["t120_gc2_poi.pkl"])
 
-    model = VisitPredictionModel(25)
+    model = GCNModel(25)
 
     loader = torch_geometric.loader.DataLoader(dataset, batch_size=2)
     counter = 0

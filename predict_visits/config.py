@@ -1,12 +1,12 @@
 import torch
 from predict_visits.model.transforms import TransformFF, NoTransform
-from predict_visits.model.graph_resnet import VisitPredictionModel
+from predict_visits.model.graph_resnet import GCNModel
 from predict_visits.model.fully_connected import FullyConnectedModel
 from predict_visits.model.transformer_model import TransformerModel
 
 model_dict = {
     "gcn": {
-        "model_class": VisitPredictionModel,
+        "model_class": GCNModel,
         "inp_transform": NoTransform,
         "model_cfg": {
             "out_dim": 1,

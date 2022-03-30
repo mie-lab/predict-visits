@@ -9,12 +9,11 @@ import pickle
 from collections import defaultdict
 import torch
 from torch_geometric.data import DataLoader
-from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.dataset import MobilityGraphDataset
 
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
-from predict_visits.utils import load_model, get_visits_adj
+from predict_visits.utils import load_model
 
 from predict_visits.config import model_dict
 

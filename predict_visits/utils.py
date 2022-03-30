@@ -67,7 +67,7 @@ def get_visits_adj(adjacency):
     ind = np.array(np.sum(adjacency, axis=0))[0]
     # get out degrees
     outd = np.array(np.sum(adjacency, axis=1)).flatten()
-    np.max(np.vstack((ind, outd)), axis=0)
+    return np.max(np.vstack((ind, outd)), axis=0)
 
 
 def normalize_adj(adj):
