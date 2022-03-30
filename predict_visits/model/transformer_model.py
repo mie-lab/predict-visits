@@ -2,6 +2,7 @@ import torch.nn as nn
 import torch
 import math
 from torch import Tensor
+from predict_visits.model.transforms import TransformFF
 
 
 class TransformerModel(nn.Module):
@@ -12,12 +13,17 @@ class TransformerModel(nn.Module):
         dropout,
         nhead,
         dim_feedforward,
+        historic_input=10,
         out_dim=1,
         **kwargs
     ) -> None:
         super(TransformerModel, self).__init__()
         self.num_feats = num_feats
 
+        # transform torch geometric data into tensor (sequ_len x bs x feats)
+        self.pre_transform = TransformFF(
+            flatten=False, historic_input=historic_input
+        )
         self.model = Transformer(
             num_layers=num_layers,
             dropout=dropout,
@@ -38,7 +44,8 @@ class TransformerModel(nn.Module):
         self.final_norm = nn.LayerNorm(num_feats)
         self.final_layer = nn.Linear(num_feats, out_dim)
 
-    def forward(self, x):
+    def forward(self, data):
+        x = self.pre_transform(data)
         # print(x.size())
         # >> (8, 11, 24) with the default parameters
         # corresponds to (batch_size, number input locations, number features)

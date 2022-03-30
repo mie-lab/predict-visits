@@ -153,18 +153,16 @@ if __name__ == "__main__":
         help="Path to test data to evaluate",
     )
     args = parser.parse_args()
+    base_path = os.path.join("outputs", "spatial_eval")
+    os.makedirs(os.path.join(base_path, args.out_name))
 
     test_data_path = args.data_path
     model_path = args.model_path
     MAX_LABEL = 10
 
     model, cfg = load_model(model_path)
-    model = KNN(1, weighted=False)
+    # model = KNN(1, weighted=False) # check knn distribution
     cfg["include_poi"] = False
-
-    # add transform function
-    model_cfg = model_dict[cfg["model"]]
-    transform_for_model = model_cfg.get("inp_transform", NoTransform)(**cfg)
 
     with open(os.path.join("data", test_data_path), "rb") as infile:
         (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
@@ -210,12 +208,9 @@ if __name__ == "__main__":
                 add_batch=True,
             )
 
-            # final model-dependent transform
-            inp_data = transform_for_model(data)
-
             # RUN MODEL
             lab = data.y[:, -1]
-            pred = model(inp_data)
+            pred = model(data)
 
             unnormed_pred = MobilityGraphDataset.unnorm_label(
                 pred.item(),
@@ -234,7 +229,7 @@ if __name__ == "__main__":
             grid_labels,
             user_locations,
             user_labels,
-            save_path=os.path.join(f"outputs/spatial_eval/plot_2d_{i}"),
+            save_path=os.path.join(base_path, args.out_name, f"plot_2d_{i}"),
         )
 
         plot_spatial_distribution_3d(
@@ -243,5 +238,5 @@ if __name__ == "__main__":
             user_locations,
             user_labels,
             max_label=MAX_LABEL,
-            save_path=os.path.join(f"outputs/spatial_eval/plot_3d_{i}"),
+            save_path=os.path.join(base_path, args.out_name, f"plot_3d_{i}"),
         )

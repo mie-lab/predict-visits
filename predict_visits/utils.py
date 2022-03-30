@@ -3,7 +3,7 @@ import json
 import os
 import torch
 import scipy.sparse as sp
-from predict_visits.model.graph_resnet import VisitPredictionModel
+from predict_visits.model.model_wrapper import ModelWrapper
 from predict_visits.config import model_dict
 
 
@@ -17,7 +17,7 @@ def load_model(model_path):
     NeuralModel = cfg_model["model_class"]
 
     # init model
-    model = NeuralModel(cfg["nr_features"], **cfg["model_cfg"])
+    model = ModelWrapper(cfg["nr_features"], NeuralModel, **cfg)
 
     # load checkpoint
     model_checkpoint = torch.load(

@@ -42,8 +42,6 @@ class MobilityGraphDataset(InMemoryDataset):
         dataset_files,
         device=torch.device("cpu"),
         root="data",
-        transform=None,
-        pre_transform=None,
         ratio_predict=0.1,
         relative_feats=False,
         sampling="normal",
@@ -52,9 +50,7 @@ class MobilityGraphDataset(InMemoryDataset):
         """
         Data Loader for mobility graphs
         """
-        super(MobilityGraphDataset, self).__init__(
-            root, transform, pre_transform
-        )
+        super(MobilityGraphDataset, self).__init__(root, None, None)
         self.relative_feats = relative_feats
         self.sampling = sampling
         self.ratio_predict = ratio_predict
@@ -270,10 +266,10 @@ class MobilityGraphDataset(InMemoryDataset):
         # hack for labels: make the ones of the first two weeks negative so
         # that we can exclude those later
         first_weeks = (
-            node_feature_df["occured_after_days"] < exclude_days
-        ).astype(int) * (-1)
+            node_feature_df["occured_after_days"].values > exclude_days
+        ).astype(int) * 2 - 1
         assert np.all(label > 0)
-        label = label * first_weeks.values[use_nodes]
+        label = label * first_weeks[use_nodes]
 
         # concatenate the other features with the labels and append
         concat_feats_labels = np.concatenate(

@@ -9,7 +9,7 @@ from torch_geometric.data import DataLoader
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from single_model_eval import evaluate
-from predict_visits.model.embedding_model import EmbeddingModel
+from predict_visits.model.model_wrapper import ModelWrapper
 
 from predict_visits.config import model_dict
 
@@ -29,30 +29,31 @@ parser.add_argument("-z", "--embedding", default="simple", type=str)
 parser.add_argument("-i", "--historic_input", default=10, type=int)
 parser.add_argument("-p", "--sampling", default="normal", type=str)
 parser.add_argument("-s", "--save_name", default="model", type=str)
+parser.add_argument("--feature_embedding", default=1, type=int)
 args = parser.parse_args()
 
 # define config
 cfg = vars(args)
+# model-specific args
 model_cfg = model_dict[args.model]["model_cfg"]
-model_cfg["historic_input"] = cfg["historic_input"]  # model-specific args
+model_cfg["historic_input"] = cfg["historic_input"]
 cfg["model_cfg"] = model_cfg
 print("config:", cfg)
 
 # current experimental setting
-cfg["root"] = "data/1bin"
+cfg["root"] = "data/1bin_2"
 cfg["include_poi"] = False
 
 # get basic classes / functions
 NeuralModel = model_dict[args.model]["model_class"]
-inp_transform = model_dict[args.model]["inp_transform"](**model_cfg)
 model_name = args.save_name
 
 # data files must exist in directory data
 train_data_files = [
-    "t120_1bin_gc1.pkl",
-    "t120_1bin_yumuv_graph_rep.pkl",
-    "t120_1bin_tist_toph1000.pkl",
-    "t120_1bin_geolife.pkl",
+    "t120_1bin_2_gc1.pkl",
+    "t120_1bin_2_yumuv_graph_rep.pkl",
+    # "t120_1bin_tist_toph1000.pkl",
+    # "t120_1bin_geolife.pkl",
 ]
 # all datasets
 # [
@@ -61,7 +62,7 @@ train_data_files = [
 #     "t120_tist_toph100.pkl",
 #     "t120_tist_random100.pkl",
 # ]
-test_data_files = ["t120_1bin_gc2.pkl"]
+test_data_files = ["t120_1bin_2_gc2.pkl"]
 # ["t120_gc2_poi.pkl"]
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs
@@ -90,12 +91,12 @@ train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 test_data = MobilityGraphDataset(test_data_files, device=device, **cfg)
 
 # Create model - input dimension is the number of features
-model = NeuralModel(train_data.num_feats, **cfg["model_cfg"]).to(device)
+model = ModelWrapper(train_data.num_feats, NeuralModel, **cfg).to(device)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
 # number of parameters
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(total_params)
+print("total params", total_params)
 
 r3 = lambda x: round(x * 100, 2)  # round function for printing
 
@@ -106,12 +107,10 @@ for epoch in range(nr_epochs):
     # TRAIN
     for i, data_geometric in enumerate(train_loader):
         # label is part of data.y --> visits to the new location
-        lab = data_geometric.y[:, -1:]
-        data = inp_transform(data_geometric)
+        lab = data_geometric.y[:, -1:].clone()
 
         optimizer.zero_grad()
-
-        out = model(data.to(device))
+        out = model(data_geometric.to(device))
         # MSE
         loss = torch.sum((out - lab) ** 2)
         loss.backward()
@@ -128,7 +127,6 @@ for epoch in range(nr_epochs):
         with torch.no_grad():
             res_models = evaluate(
                 {"trained": model, "median": SimpleMedian()},
-                {"trained": inp_transform},
                 test_data,
             )
             test_loss = res_models["trained"]

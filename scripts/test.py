@@ -6,7 +6,6 @@ import pickle
 from collections import defaultdict
 import torch
 
-from predict_visits.model.transforms import NoTransform
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
@@ -130,7 +129,6 @@ if __name__ == "__main__":
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
     cfg_to_evaluate = {"simple_median": {"include_poi": False}}
-    transform = {}
 
     # add trained model
     for model_name in os.listdir(os.path.join("trained_models", model_path)):
@@ -139,11 +137,6 @@ if __name__ == "__main__":
         model, cfg = load_model(os.path.join(model_path, model_name))
         models_to_evaluate[model_name] = model
         cfg_to_evaluate[model_name] = cfg
-
-        # add transform function
-        model_cfg = model_dict[cfg["model"]]
-        transform_for_model = model_cfg.get("inp_transform", NoTransform)
-        transform[model_name] = transform_for_model(**cfg["model_cfg"])
 
     # # KNNs for best model comparison
     cfg_knn = cfg.copy()  # use last cfg of the models
@@ -244,21 +237,20 @@ if __name__ == "__main__":
                     add_batch=True,
                 )
 
-                # final model-dependent transform
-                transform_func = transform.get(model_name, lambda x: x)
-                inp_data = transform_func(data)
-
                 # RUN MODEL
-                lab = data.y[:, -1]
-                pred = eval_model(inp_data)
+                pred = eval_model(data)
 
-                loss = torch.sum((pred - lab) ** 2).item()
+                loss = torch.sum((pred - normed_label) ** 2).item()
 
                 unnormed_pred = MobilityGraphDataset.unnorm_label(
                     pred.item(),
                     label_cutoff,
                     cfg.get("log_labels", False),
                 )
+                # print(model_name)
+                # print("lab", gt_label, normed_label)
+                # print("pred", unnormed_pred, pred)
+                # print()
 
                 error = np.abs(unnormed_pred - gt_label)
 

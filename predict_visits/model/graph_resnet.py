@@ -180,7 +180,6 @@ class VisitPredictionModel(nn.Module):
     def __init__(
         self,
         node_feat_dim,
-        new_loc_feat_dim=None,
         out_dim=1,
         graph_enc_dim=64,
         graph_layers: Union[int, List[int]] = 42,
@@ -189,7 +188,6 @@ class VisitPredictionModel(nn.Module):
         ff_layers: List[int] = [64, 32],
         adj_is_symmetric=True,
         dropout_prob=0,
-        embed_features=False,
         **kwargs
     ):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
@@ -207,14 +205,11 @@ class VisitPredictionModel(nn.Module):
             p=dropout_prob,
             **kwargs,
         )
-        if new_loc_feat_dim is None:
-            new_loc_feat_dim = node_feat_dim - 1
 
-        self.embed_module = EmbeddingModel(node_feat_dim - 1, inp_embed_dim)
         # second input processing:
-        # self.embed_layer = nn.Linear(new_loc_feat_dim, inp_embed_dim)
+        self.embed_layer = nn.Linear(node_feat_dim - 1, inp_embed_dim)
         # first forward layer
-        first_layer_size = graph_enc_dim + node_feat_dim - 1
+        first_layer_size = graph_enc_dim + inp_embed_dim
         self.ff_layers = nn.ModuleList(
             [nn.Linear(first_layer_size, ff_layers[0])]
         )
@@ -224,16 +219,13 @@ class VisitPredictionModel(nn.Module):
         self.ff_layers.append(nn.Linear(ff_layers[-1], out_dim))
 
     def forward(self, data):
-        # 1. Graph processing - node embeddings
-        embedded_feats = self.embed_module(data.x[:, :-1])
-        data.x = torch.cat((embedded_feats, data.x[:, -1:]), dim=-1)
 
         graph_embed = self.graph_module(data)
         graph_embed = global_mean_pool(graph_embed, data.batch)
 
         # 2. processing of separate input
         separate_input = data.y[:, :-1]
-        inp_embed = self.embed_module(separate_input)
+        inp_embed = self.embed_layer(separate_input)
 
         # concat both
         x = torch.cat((graph_embed, inp_embed), dim=1)
