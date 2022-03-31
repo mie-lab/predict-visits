@@ -97,6 +97,7 @@ optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 # number of parameters
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print("total params", total_params)
+cfg["nr_params"] = total_params
 
 r3 = lambda x: round(x * 100, 2)  # round function for printing
 
