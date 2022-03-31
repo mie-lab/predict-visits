@@ -40,30 +40,28 @@ model_cfg["historic_input"] = cfg["historic_input"]
 cfg["model_cfg"] = model_cfg
 print("config:", cfg)
 
-# current experimental setting
-cfg["root"] = "data/1bin_2"
-cfg["include_poi"] = False
-
 # get basic classes / functions
 NeuralModel = model_dict[args.model]["model_class"]
 model_name = args.save_name
 
-# data files must exist in directory data
-train_data_files = [
-    "t120_1bin_2_gc1.pkl",
-    "t120_1bin_2_yumuv_graph_rep.pkl",
+# 1bin_2 files
+# train_data_files = [
+#     "t120_1bin_2_gc1.pkl",
+#     "t120_1bin_2_yumuv_graph_rep.pkl",
     # "t120_1bin_tist_toph1000.pkl",
     # "t120_1bin_geolife.pkl",
-]
-# all datasets
-# [
-#     "t120_gc1_poi.pkl",
-#     "t120_yumuv_graph_rep_poi.pkl",
+# ]
+# test_data_files = ["t120_1bin_2_gc2.pkl"]
+
+# normal files
+train_data_files =  [
+    "t120_gc1_poi.pkl",
+    "t120_yumuv_graph_rep_poi.pkl",
 #     "t120_tist_toph100.pkl",
 #     "t120_tist_random100.pkl",
-# ]
-test_data_files = ["t120_1bin_2_gc2.pkl"]
-# ["t120_gc2_poi.pkl"]
+]
+test_data_files = ["t120_gc2_poi.pkl"]
+
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs
 batch_size = args.batch_size

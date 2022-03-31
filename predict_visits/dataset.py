@@ -211,7 +211,7 @@ class MobilityGraphDataset(InMemoryDataset):
         dist_thresh=500,
         log_labels=False,
         embedding="simple",
-        exclude_days=7,
+        exclude_days=0,
         **kwargs,
     ):
         """
@@ -265,11 +265,12 @@ class MobilityGraphDataset(InMemoryDataset):
 
         # hack for labels: make the ones of the first two weeks negative so
         # that we can exclude those later
-        first_weeks = (
-            node_feature_df["occured_after_days"].values > exclude_days
-        ).astype(int) * 2 - 1
-        assert np.all(label > 0)
-        label = label * first_weeks[use_nodes]
+        if exclude_days > 0 and "occured_after_days" in node_feature_df.columns:
+            first_weeks = (
+                node_feature_df["occured_after_days"].values > exclude_days
+            ).astype(int) * 2 - 1
+            assert np.all(label > 0)
+            label = label * first_weeks[use_nodes]
 
         # concatenate the other features with the labels and append
         concat_feats_labels = np.concatenate(
