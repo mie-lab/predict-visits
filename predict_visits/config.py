@@ -13,6 +13,7 @@ model_dict = {
             "ff_layers": [64, 32],
             "graph_enc_dim": 64,
             "graph_k": 4,
+            "inp_embed_dim": 1,
         },
     },
     "ff": {

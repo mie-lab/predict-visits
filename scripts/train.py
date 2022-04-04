@@ -3,8 +3,8 @@ import torch
 import argparse
 import json
 import time
+import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from torch_geometric.data import DataLoader
 
 from predict_visits.dataset import MobilityGraphDataset
@@ -70,10 +70,11 @@ else:
 # normal files
 train_data_files = [
     "t120_yumuv_graph_rep_poi.pkl",
+    "t120_gc1_poi.pkl"
     #     "t120_tist_toph100.pkl",
     #     "t120_tist_random100.pkl",
 ]
-test_data_files = ["t120_gc1_poi.pkl"]
+test_data_files = ["t120_yumuv_graph_rep_poi.pkl", "t120_gc1_poi.pkl"]
 
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs
@@ -94,11 +95,11 @@ os.makedirs("trained_models", exist_ok=True)
 os.makedirs(out_path, exist_ok=True)
 
 # Train on GC1, GC2 and YUMUV
-train_data = dataset_class(train_data_files, device=device, **cfg)
+train_data = dataset_class(train_data_files, mode="train", device=device, **cfg)
 train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 
 # Test on Geolife
-test_data = dataset_class(test_data_files, device=device, **cfg)
+test_data = dataset_class(test_data_files, mode="test", device=device, **cfg)
 
 # Create model - input dimension is the number of features
 model = ModelWrapper(train_data.num_feats, NeuralModel, **cfg).to(device)
@@ -181,8 +182,14 @@ with open(os.path.join(out_path, "res.json"), "w") as outfile:
 
 # evaluate best model
 model, cfg = load_model(model_name, use_best=True)
-res_df = evaluate_privacy(
+res_df_test = evaluate_privacy(
     model, test_data, cfg["predict_variable"], return_mode="df"
 )
+res_df_test["train"] = "test"
+res_df_train = evaluate_privacy(
+    model, train_data, cfg["predict_variable"], return_mode="df"
+)
+res_df_train["train"] = "train"
+res_df = pd.concat((res_df_train, res_df_test))
 os.makedirs(os.path.join("outputs", "privacy"), exist_ok=True)
 res_df.to_csv(os.path.join("outputs", "privacy", model_name + ".csv"))

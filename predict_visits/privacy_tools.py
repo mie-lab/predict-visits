@@ -14,6 +14,7 @@ min_age = 20
 post_functions = {
     "income": lambda x: 9 * x,
     "age": lambda x: x * (max_age - min_age) + min_age,
+    "sex": lambda x: x,
 }
 
 
@@ -58,7 +59,9 @@ def evaluate_privacy(eval_model, test_data, task="income", return_mode="mean"):
 
 
 class PrivacyDataset(MobilityGraphDataset):
-    def __init__(self, *args, predict_variable="income", **kwargs):
+    def __init__(
+        self, *args, predict_variable="income", mode="train", **kwargs
+    ):
         super().__init__(*args, **kwargs)
 
         # load data from server
@@ -66,6 +69,14 @@ class PrivacyDataset(MobilityGraphDataset):
         privacy_labels = pd.read_csv(os.path.join("data", "privacy.csv"))
         privacy_labels["user_id"] = privacy_labels["user_id"].astype(str)
         privacy_labels.set_index("user_id", inplace=True)
+
+        # select train / test set
+        np.random.seed(3)
+        rand_ids = np.random.permutation(privacy_labels.index)
+        if mode == "train":
+            use_ids = rand_ids[len(privacy_labels) // 10 :]
+        else:
+            use_ids = rand_ids[: len(privacy_labels) // 10]
 
         self.valid_samples = []
         self.labels = []
@@ -77,7 +88,7 @@ class PrivacyDataset(MobilityGraphDataset):
                 assert pd.isna(lab) or 0 <= lab <= 1
             except KeyError:
                 lab = pd.NA
-            if not pd.isna(lab):
+            if not pd.isna(lab) and user_id in use_ids:
                 self.valid_samples.append(i)
             self.labels.append(lab)
         print(
