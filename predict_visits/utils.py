@@ -7,7 +7,7 @@ from predict_visits.model.model_wrapper import ModelWrapper
 from predict_visits.config import model_dict
 
 
-def load_model(model_path):
+def load_model(model_path, use_best=False):
     with open(
         os.path.join("trained_models", model_path, "cfg.json"), "r"
     ) as infile:
@@ -20,8 +20,9 @@ def load_model(model_path):
     model = ModelWrapper(cfg["nr_features"], NeuralModel, **cfg)
 
     # load checkpoint
+    model_filename = "best_model" if use_best else "model"
     model_checkpoint = torch.load(
-        os.path.join("trained_models", model_path, "model"),
+        os.path.join("trained_models", model_path, model_filename),
         map_location=torch.device("cpu"),
     )
     # such a shit: due to some pytorch version stuff or so, the checkpoint from

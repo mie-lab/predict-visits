@@ -75,7 +75,8 @@ class MobilityGraphDataset(InMemoryDataset):
         self.nr_graphs = len(self.adjacency)
 
         # store the feature dimension and normalization stats
-        self.num_feats = self[0].x.size()[-1]
+        self.num_feats = self.node_feats[0].shape[-1]
+        print("number features", self.num_feats)
         print("Number samples after preprocessing", len(self.node_feats))
 
     def split_graphs_v1(self, node_feats, adjacency):
@@ -316,6 +317,7 @@ class MobilityGraphDataset(InMemoryDataset):
         adj_is_unweighted=True,
         adj_is_symmetric=True,
         add_batch=False,
+        user_id=None,
     ):
         if adj_is_symmetric:
             adj = adj + adj.T
@@ -351,6 +353,7 @@ class MobilityGraphDataset(InMemoryDataset):
             edge_index=edge_index,
             edge_attr=edge_attr.float(),
             y=label_node_feats,
+            user_id=user_id,
         )
         if add_batch:
             data_sample.batch = torch.tensor(
