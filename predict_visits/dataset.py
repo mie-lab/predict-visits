@@ -19,6 +19,28 @@ from predict_visits.geo_embedding.embed import (
 from predict_visits.features.purpose import purpose_df_to_matrix
 
 
+def time_features(row, return_array=True):
+    started_at_list = row["started_at"].copy()
+    # 1) weekday / weekend
+    weekdays = [e.dayofweek for e in started_at_list]
+    is_weekend_ratio = sum(np.array(weekdays) > 5) / len(weekdays)
+    row["weekend_ratio"] = is_weekend_ratio
+    # one column for each weekday
+    weekday_count = np.zeros(7)
+    for day in weekdays:
+        weekday_count[day] += 1
+    for day, nr_times in enumerate(weekday_count):
+        row["day_" + str(day)] = nr_times  # add to row
+    # 2) time of the day
+    hour_of_day = np.array([e.hour for e in started_at_list])
+    hour_count = np.zeros(24)
+    for hour in hour_of_day:
+        hour_count[hour] += 1
+    for hour, nr_times in enumerate(hour_count):
+        row["hour_" + str(hour)] = nr_times
+    return row
+
+
 class MobilityGraphDataset(InMemoryDataset):
     """
     Dataset to yield graph and test nodes separately
@@ -188,10 +210,19 @@ class MobilityGraphDataset(InMemoryDataset):
         # Average start time (average is a very bad feature, refine that later)
         # use sinuoidal transform to express 0:00 == 23:59:99
         if include_time:
-            started = node_feat_df["avg_started_at"].values  # Problem
-            sin_start = np.sin(2 * np.pi * started / 24)
-            cos_start = np.cos(2 * np.pi * started / 24)
-            start_time_arr = np.vstack([sin_start, cos_start]).swapaxes(1, 0)
+            # node_feat_df = node_feat_df.apply(weekday_features, axis=1)
+            # started = node_feat_df["avg_started_at"].values  # Problem
+            # sin_start = np.sin(2 * np.pi * started / 24)
+            # cos_start = np.cos(2 * np.pi * started / 24)
+            # start_time_arr = np.vstack([sin_start, cos_start]).swapaxes(1, 0)
+            start_time_df = node_feat_df.apply(time_features, axis=1)
+            start_time_arr = np.array(
+                start_time_df[
+                    ["hour_" + str(hour) for hour in range(24)]
+                    + ["day_" + str(day) for day in range(7)]
+                    + ["weekend_ratio"]
+                ]
+            )
             features_to_include.append(start_time_arr)
 
         # POI data
