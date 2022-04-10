@@ -236,7 +236,7 @@ class GCNModel(nn.Module):
             x = F.dropout(x, p=self.dropout_prob, training=self.training)
             x = layer(x)
 
-        out = torch.sigmoid(x)
+        out = torch.softmax(x, -1)
         return out
 
 

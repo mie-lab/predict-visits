@@ -24,7 +24,9 @@ def retrieve_users(user_id_list):
     return study, user_ids
 
 
-def evaluate_privacy(eval_model, test_data, task="income", return_mode="mean"):
+def evaluate_privacy(
+    eval_model, test_data, loss, task="income", return_mode="mean"
+):
     post_transform = post_functions[task]
     test_data_loader = DataLoader(test_data, shuffle=False, batch_size=1)
     sum_err, sum_mse = 0, 0
@@ -34,9 +36,10 @@ def evaluate_privacy(eval_model, test_data, task="income", return_mode="mean"):
         # forward pass
         out = eval_model(data)
 
-        test_mse = torch.sum((out - lab) ** 2).item()
+        test_mse = loss(out, lab).item()
+        pred = torch.argmax(out, -1)
         test_abs_err = torch.abs(
-            post_transform(out) - post_transform(lab)
+            post_transform(pred) - post_transform(lab)
         ).item()
         sum_err += test_abs_err
         sum_mse += test_mse
@@ -45,8 +48,8 @@ def evaluate_privacy(eval_model, test_data, task="income", return_mode="mean"):
                 "user_id": data.user_id,
                 "lab_normed": lab.item(),
                 "lab": post_transform(lab).item(),
-                "pred_normed": out.item(),
-                "pred": post_transform(out).item(),
+                "pred_normed": pred.item(),
+                "pred": post_transform(pred).item(),
             }
         )
     res_df = pd.DataFrame(res_dict)
@@ -63,6 +66,8 @@ class PrivacyDataset(MobilityGraphDataset):
         self, *args, predict_variable="income", mode="train", **kwargs
     ):
         super().__init__(*args, **kwargs)
+
+        self.predict_variable = predict_variable
 
         # load data from server
         study, user_ids = retrieve_users(self.users)
@@ -84,7 +89,8 @@ class PrivacyDataset(MobilityGraphDataset):
             user_id = user_ids[i]
             try:
                 lab = privacy_labels.loc[user_id][predict_variable]
-
+                if predict_variable == "sex" and lab == 0.5:
+                    lab = pd.NA
                 assert pd.isna(lab) or 0 <= lab <= 1
             except KeyError:
                 lab = pd.NA
@@ -118,6 +124,10 @@ class PrivacyDataset(MobilityGraphDataset):
             relative_feats=False,
             user_id=user_id,
         ).to(self.device)
+
+        if self.predict_variable == "sex":
+            data_sample.y = data_sample.y.long()
+
         return data_sample
 
 

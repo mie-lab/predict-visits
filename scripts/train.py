@@ -6,6 +6,7 @@ import time
 import pandas as pd
 import numpy as np
 from torch_geometric.data import DataLoader
+import torch.nn as nn
 
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.privacy_tools import PrivacyDataset, evaluate_privacy
@@ -33,7 +34,7 @@ parser.add_argument("-i", "--historic_input", default=10, type=int)
 parser.add_argument("-p", "--sampling", default="normal", type=str)
 parser.add_argument("-s", "--save_name", default="model", type=str)
 parser.add_argument("--feature_embedding", default=1, type=int)
-parser.add_argument("--include_poi", default=1, type=int)
+parser.add_argument("--include_poi", default=0, type=int)
 parser.add_argument("--early_stopping", default=np.inf, type=float)
 parser.add_argument("--predict_variable", default="visits", type=str)
 args = parser.parse_args()
@@ -59,6 +60,7 @@ else:
     dataset_class = PrivacyDataset
 
 # 1bin_2 files
+# cfg["root"] = "data/1bin_2"
 # train_data_files = [
 #     "t120_1bin_2_gc1.pkl",
 #     "t120_1bin_2_yumuv_graph_rep.pkl",
@@ -74,7 +76,8 @@ train_data_files = [
     #     "t120_tist_toph100.pkl",
     #     "t120_tist_random100.pkl",
 ]
-test_data_files = ["t120_yumuv_graph_rep_poi.pkl", "t120_gc1_poi.pkl"]
+test_data_files = train_data_files
+# ["t120_yumuv_graph_rep_poi.pkl", "t120_gc1_poi.pkl"]
 
 learning_rate = args.learning_rate
 nr_epochs = args.nr_epochs
@@ -100,6 +103,7 @@ train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 
 # Test on Geolife
 test_data = dataset_class(test_data_files, mode="test", device=device, **cfg)
+print("num feats", train_data.num_feats)
 
 # Create model - input dimension is the number of features
 model = ModelWrapper(train_data.num_feats, NeuralModel, **cfg).to(device)
@@ -115,17 +119,19 @@ r3 = lambda x: round(x * 100, 2)  # round function for printing
 best_test_loss, last_updated_best = np.inf, 0
 start_training_time = time.time()
 train_losses, test_losses, bl_losses = [], [], []
+loss_fun = nn.CrossEntropyLoss()  # nn.MSELoss()
 for epoch in range(nr_epochs):
     epoch_loss = 0
     # TRAIN
     for i, data_geometric in enumerate(train_loader):
         # label is part of data.y --> visits to the new location
-        lab = data_geometric.y[:, -1:].clone()
+        lab = data_geometric.y[:, -1].clone()
 
         optimizer.zero_grad()
         out = model(data_geometric.to(device))
+
         # MSE
-        loss = torch.sum((out - lab) ** 2)
+        loss = loss_fun(out, lab)
         loss.backward()
         # print(torch.sum(model.dec_hidden_2.weight.grad))
         # print(torch.sum(model.dec_out.weight.grad))
@@ -144,7 +150,7 @@ for epoch in range(nr_epochs):
             # )
             # test_loss = res_models["trained"]
             test_loss = evaluate_privacy(
-                model, test_data, task=cfg["predict_variable"]
+                model, test_data, loss_fun, task=cfg["predict_variable"]
             )
 
         print(epoch, r3(epoch_loss), round(test_loss, 2))
@@ -183,11 +189,11 @@ with open(os.path.join(out_path, "res.json"), "w") as outfile:
 # evaluate best model
 model, cfg = load_model(model_name, use_best=True)
 res_df_test = evaluate_privacy(
-    model, test_data, cfg["predict_variable"], return_mode="df"
+    model, test_data, loss_fun, cfg["predict_variable"], return_mode="df"
 )
 res_df_test["train"] = "test"
 res_df_train = evaluate_privacy(
-    model, train_data, cfg["predict_variable"], return_mode="df"
+    model, train_data, loss_fun, cfg["predict_variable"], return_mode="df"
 )
 res_df_train["train"] = "train"
 res_df = pd.concat((res_df_train, res_df_test))

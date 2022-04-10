@@ -9,7 +9,7 @@ model_dict = {
         "model_class": GCNModel,
         "inp_transform": NoTransform,
         "model_cfg": {
-            "out_dim": 1,
+            "out_dim": 2,
             "ff_layers": [64, 32],
             "graph_enc_dim": 64,
             "graph_k": 4,
