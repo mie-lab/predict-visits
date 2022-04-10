@@ -32,8 +32,8 @@ parser.add_argument("-z", "--embedding", default="simple", type=str)
 parser.add_argument("-i", "--historic_input", default=10, type=int)
 parser.add_argument("-p", "--sampling", default="normal", type=str)
 parser.add_argument("-s", "--save_name", default="model", type=str)
-parser.add_argument("--feature_embedding", default=1, type=int)
-parser.add_argument("--include_poi", default=1, type=int)
+parser.add_argument("--feature_embedding", default=0, type=int)
+parser.add_argument("--include_dist", default=0, type=int)
 parser.add_argument("--early_stopping", default=np.inf, type=float)
 parser.add_argument("--predict_variable", default="visits", type=str)
 args = parser.parse_args()
@@ -94,12 +94,12 @@ out_path = os.path.join("trained_models", model_name)
 os.makedirs("trained_models", exist_ok=True)
 os.makedirs(out_path, exist_ok=True)
 
-# Train on GC1, GC2 and YUMUV
 train_data = dataset_class(train_data_files, mode="train", device=device, **cfg)
 train_loader = DataLoader(train_data, shuffle=True, batch_size=batch_size)
 
-# Test on Geolife
 test_data = dataset_class(test_data_files, mode="test", device=device, **cfg)
+
+val_data = dataset_class(test_data_files, mode="val", device=device, **cfg)
 
 # Create model - input dimension is the number of features
 model = ModelWrapper(train_data.num_feats, NeuralModel, **cfg).to(device)
@@ -144,7 +144,7 @@ for epoch in range(nr_epochs):
             # )
             # test_loss = res_models["trained"]
             test_loss = evaluate_privacy(
-                model, test_data, task=cfg["predict_variable"]
+                model, val_data, task=cfg["predict_variable"]
             )
 
         print(epoch, r3(epoch_loss), round(test_loss, 2))
