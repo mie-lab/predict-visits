@@ -174,9 +174,9 @@ class MobilityGraphDataset(InMemoryDataset):
         node_feat_df,
         stats=None,
         embedding="simple",
-        include_purpose=True,
-        include_dist=True,
-        include_poi=True,
+        include_purpose=False,
+        include_dist=False,
+        include_poi=False,
         include_time=False,
         **kwargs,
     ):
@@ -193,7 +193,12 @@ class MobilityGraphDataset(InMemoryDataset):
                 f"Wrong embedding type {embedding}, must be simple or sinus"
             )
         # collect features in a list:
-        features_to_include = [embedded_coords]
+        #
+        if include_dist:
+            features_to_include = [embedded_coords]
+        else:
+            # add dummy features
+            features_to_include = [np.ones(embedded_coords.shape)]
 
         # purpose feature
         if include_purpose:
@@ -345,8 +350,8 @@ class MobilityGraphDataset(InMemoryDataset):
         known_node_feats,
         predict_node_feats,
         relative_feats=False,
-        adj_is_unweighted=True,
-        adj_is_symmetric=True,
+        adj_is_unweighted=False,
+        adj_is_symmetric=False,
         add_batch=False,
         user_id=None,
     ):
