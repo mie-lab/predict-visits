@@ -78,10 +78,15 @@ class PrivacyDataset(MobilityGraphDataset):
         # select train / test set
         np.random.seed(3)
         rand_ids = np.random.permutation(privacy_labels.index)
+        nr_test = len(privacy_labels) // 10
+        nr_val = nr_test // 2
+        print("Test", nr_test, "Val", nr_val)
         if mode == "train":
-            use_ids = rand_ids[len(privacy_labels) // 10 :]
-        else:
-            use_ids = rand_ids[: len(privacy_labels) // 10]
+            use_ids = rand_ids[nr_test + nr_val :]
+        elif mode == "test":
+            use_ids = rand_ids[:nr_test]
+        elif mode == "val":
+            use_ids = rand_ids[nr_test : nr_test + nr_val]
 
         self.valid_samples = []
         self.labels = []
@@ -98,7 +103,12 @@ class PrivacyDataset(MobilityGraphDataset):
                 self.valid_samples.append(i)
             self.labels.append(lab)
         print(
-            "Valid samples", len(self.valid_samples), "out of", len(self.users)
+            "mode",
+            mode,
+            " - valid samples",
+            len(self.valid_samples),
+            "out of",
+            len(self.users),
         )
 
     def len(self):
