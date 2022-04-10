@@ -125,7 +125,7 @@ for epoch in range(nr_epochs):
     # TRAIN
     for i, data_geometric in enumerate(train_loader):
         # label is part of data.y --> visits to the new location
-        lab = data_geometric.y[:, -1].clone()
+        lab = data_geometric.y[:, -1].clone().long()
 
         optimizer.zero_grad()
         out = model(data_geometric.to(device))

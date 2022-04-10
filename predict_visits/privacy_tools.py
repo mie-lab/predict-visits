@@ -32,7 +32,7 @@ def evaluate_privacy(
     sum_err, sum_mse = 0, 0
     res_dict = []
     for k, data in enumerate(test_data_loader):
-        lab = data.y[:, -1].clone()
+        lab = data.y[:, -1].clone().long()
         # forward pass
         out = eval_model(data)
 
@@ -134,9 +134,6 @@ class PrivacyDataset(MobilityGraphDataset):
             relative_feats=False,
             user_id=user_id,
         ).to(self.device)
-
-        if self.predict_variable == "sex":
-            data_sample.y = data_sample.y.long()
 
         return data_sample
 
