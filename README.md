@@ -1,4 +1,8 @@
-# predict-visits
+# Visit frequency prediction
+
+This repository contains the code to train neural network models on visit frequency prediction, i.e., predicting the number of future visits to a newly visited location. 
+
+Unfortunately, our analysis is based on propreitary datasets and can therefore not be reproduced without access to the data.
 
 ## Installation:
 
