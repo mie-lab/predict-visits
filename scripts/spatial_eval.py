@@ -8,9 +8,8 @@ import pickle
 import seaborn as sns
 import torch
 
-from predict_visits.model.graph_resnet import VisitPredictionModel
 from predict_visits.dataset import MobilityGraphDataset
-from predict_visits.utils import get_label, load_model
+from predict_visits.utils import load_model, get_visits
 from predict_visits.config import model_dict
 from predict_visits.model.transforms import NoTransform
 from predict_visits.baselines.knn import KNN
@@ -153,18 +152,16 @@ if __name__ == "__main__":
         help="Path to test data to evaluate",
     )
     args = parser.parse_args()
+    base_path = os.path.join("outputs", "spatial_eval")
+    os.makedirs(os.path.join(base_path, args.out_name))
 
     test_data_path = args.data_path
     model_path = args.model_path
     MAX_LABEL = 10
 
     model, cfg = load_model(model_path)
-    model = KNN(1, weighted=False)
+    # model = KNN(1, weighted=False) # check knn distribution
     cfg["include_poi"] = False
-
-    # add transform function
-    model_cfg = model_dict[cfg["model"]]
-    transform_for_model = model_cfg.get("inp_transform", NoTransform)(**cfg)
 
     with open(os.path.join("data", test_data_path), "rb") as infile:
         (users, adjacency_graphs, node_feat_list) = pickle.load(infile)
@@ -185,6 +182,8 @@ if __name__ == "__main__":
         ) = MobilityGraphDataset.graph_preprocessing(
             adjacency_raw, node_feats_raw, **cfg
         )
+        # get labels back to positive values
+        node_feats[:, -1] = np.abs(node_feats[:, -1])
         label_cutoff = stats_and_cutoff[1]
 
         # preprocess the left out node:
@@ -208,12 +207,9 @@ if __name__ == "__main__":
                 add_batch=True,
             )
 
-            # final model-dependent transform
-            inp_data = transform_for_model(data)
-
             # RUN MODEL
             lab = data.y[:, -1]
-            pred = model(inp_data)
+            pred = model(data)
 
             unnormed_pred = MobilityGraphDataset.unnorm_label(
                 pred.item(),
@@ -225,14 +221,14 @@ if __name__ == "__main__":
         grid_labels = np.array(grid_labels)
         grid_locations = np.array(fake_node_df[["x_normed", "y_normed"]])
         user_locations = np.array(node_feats_raw[["x_normed", "y_normed"]])
-        user_labels = np.array(node_feats_raw[["out_degree"]])
+        user_labels = np.array(get_visits(node_feats_raw))
 
         plot_spatial_distribution_2d(
             grid_locations,
             grid_labels,
             user_locations,
             user_labels,
-            save_path=os.path.join(f"outputs/spatial_eval/plot_2d_{i}"),
+            save_path=os.path.join(base_path, args.out_name, f"plot_2d_{i}"),
         )
 
         plot_spatial_distribution_3d(
@@ -241,5 +237,5 @@ if __name__ == "__main__":
             user_locations,
             user_labels,
             max_label=MAX_LABEL,
-            save_path=os.path.join(f"outputs/spatial_eval/plot_3d_{i}"),
+            save_path=os.path.join(base_path, args.out_name, f"plot_3d_{i}"),
         )

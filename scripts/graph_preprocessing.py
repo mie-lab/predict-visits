@@ -8,6 +8,7 @@ import copy
 import json
 import geopandas as gpd
 import psycopg2
+from torch import isin
 from tqdm import tqdm
 from functools import wraps
 from shapely import wkt, wkb
@@ -345,6 +346,11 @@ def average_hour(datetime_list):
     return np.mean(hours)
 
 
+def first_loc_occurence(datetime_list):
+    assert isinstance(datetime_list[0], pd._libs.tslibs.timestamps.Timestamp)
+    return min(datetime_list)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -380,7 +386,7 @@ if __name__ == "__main__":
     min_nodes = args.node_thresh
     save_name = args.save_name
 
-    studies = ["tist_toph1000" "gc1", "gc2", "yumuv_graph_rep", "geolife"]
+    studies = ["tist_toph1000", "gc1", "gc2", "yumuv_graph_rep", "geolife"]
 
     for study in studies:
         print("--------- Start {} --------------".format(study))
@@ -508,14 +514,24 @@ if __name__ == "__main__":
                 node_feat_df = project_normalize_coordinates(
                     node_feat_df, transformer=transformer, crs=out_crs
                 )
-                # preprocess purpose and started_at features
+                # preprocess purpose
                 if "purpose" in node_feat_df.columns:
                     node_feat_df["purpose"] = node_feat_df["purpose"].apply(
                         getmost
                     )
-                node_feat_df["started_at"] = node_feat_df["started_at"].apply(
-                    average_hour
-                )
+                # preprocess started at feature
+                node_feat_df["first_occurrence"] = node_feat_df[
+                    "started_at"
+                ].apply(first_loc_occurence)
+                first_overall_occurence = node_feat_df["first_occurrence"].min()
+                node_feat_df["occured_after_days"] = (
+                    node_feat_df["first_occurrence"] - first_overall_occurence
+                ).apply(lambda x: x.total_seconds() / (60 * 60 * 24))
+                # problem! not known for new locations
+                node_feat_df["avg_started_at"] = node_feat_df[
+                    "started_at"
+                ].apply(average_hour)
+
                 node_feat_df.drop("finished_at", axis=1, inplace=True)
 
                 # Append

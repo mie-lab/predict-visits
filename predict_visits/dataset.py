@@ -42,31 +42,18 @@ class MobilityGraphDataset(InMemoryDataset):
         dataset_files,
         device=torch.device("cpu"),
         root="data",
-        transform=None,
-        pre_transform=None,
         ratio_predict=0.1,
-        label_cutoff=10,
-        nr_keep=50,
-        min_label=1,
-        log_labels=False,
-        adj_is_unweighted=True,
-        adj_is_symmetric=True,
         relative_feats=False,
-        embedding="simple",
+        sampling="normal",
         **kwargs,
     ):
         """
         Data Loader for mobility graphs
         """
-        super(MobilityGraphDataset, self).__init__(
-            root, transform, pre_transform
-        )
+        super(MobilityGraphDataset, self).__init__(root, None, None)
         self.relative_feats = relative_feats
-        self.adj_is_unweighted = adj_is_unweighted
-        self.adj_is_symmetric = adj_is_symmetric
-        self.nr_keep = nr_keep
+        self.sampling = sampling
         self.ratio_predict = ratio_predict
-        self.min_label = min_label
         self.device = device
         # Load data - Note: adjacency is a list of adjacency matrices, and
         # coordinates is a list of arrays (one for each user)
@@ -80,12 +67,7 @@ class MobilityGraphDataset(InMemoryDataset):
         for i in range(len(self.users)):
             # process all graphs
             nf_one, adj_one, _ = self.graph_preprocessing(
-                adjacency_graphs[i],
-                node_feat_list[i],
-                label_cutoff=label_cutoff,
-                nr_keep=nr_keep,
-                log_labels=log_labels,
-                embedding=embedding,
+                adjacency_graphs[i], node_feat_list[i], **kwargs
             )
             self.node_feats.append(nf_one)
             self.adjacency.append(adj_one)
@@ -93,7 +75,7 @@ class MobilityGraphDataset(InMemoryDataset):
         self.nr_graphs = len(self.adjacency)
 
         # store the feature dimension and normalization stats
-        self.num_feats = self.node_feats[0].shape[1]
+        self.num_feats = self[0].x.size()[-1]
         print("Number samples after preprocessing", len(self.node_feats))
 
     def split_graphs_v1(self, node_feats, adjacency):
@@ -205,7 +187,7 @@ class MobilityGraphDataset(InMemoryDataset):
         # Average start time (average is a very bad feature, refine that later)
         # use sinuoidal transform to express 0:00 == 23:59:99
         if include_time:
-            started = node_feat_df["started_at"].values
+            started = node_feat_df["avg_started_at"].values  # Problem
             sin_start = np.sin(2 * np.pi * started / 24)
             cos_start = np.cos(2 * np.pi * started / 24)
             start_time_arr = np.vstack([sin_start, cos_start]).swapaxes(1, 0)
@@ -229,6 +211,7 @@ class MobilityGraphDataset(InMemoryDataset):
         dist_thresh=500,
         log_labels=False,
         embedding="simple",
+        exclude_days=0,
         **kwargs,
     ):
         """
@@ -243,8 +226,9 @@ class MobilityGraphDataset(InMemoryDataset):
         ) = MobilityGraphDataset.node_feature_preprocessing(
             node_feature_df, embedding=embedding, **kwargs
         )
-        # NOTE: out-degree is in-degree!
-        label = node_feature_df["out_degree"].values
+
+        # get label: number of visits per location
+        label = get_visits(node_feature_df)
 
         # 2) crop or pad adjacency matrix to the x nodes with highest degree
         overall_degree = (
@@ -278,6 +262,15 @@ class MobilityGraphDataset(InMemoryDataset):
         label = MobilityGraphDataset.norm_label(
             label, cutoff, log_labels=log_labels
         )
+
+        # hack for labels: make the ones of the first two weeks negative so
+        # that we can exclude those later
+        if exclude_days > 0 and "occured_after_days" in node_feature_df.columns:
+            first_weeks = (
+                node_feature_df["occured_after_days"].values > exclude_days
+            ).astype(int) * 2 - 1
+            assert np.all(label > 0)
+            label = label * first_weeks[use_nodes]
 
         # concatenate the other features with the labels and append
         concat_feats_labels = np.concatenate(
@@ -344,6 +337,14 @@ class MobilityGraphDataset(InMemoryDataset):
             known_node_feats[:, :-1] = (
                 known_node_feats[:, :-1] - label_node_feats[:, :-1]
             )
+            # # to embed both relfeat and norelfeat
+            # known_node_feats = torch.cat(
+            #     (
+            #         known_node_feats[:, :-1] - label_node_feats[:, :-1],
+            #         known_node_feats,
+            #     ),
+            #     dim=1,
+            # )
 
         data_sample = torch_geometric.data.Data(
             x=known_node_feats.float(),
@@ -358,7 +359,31 @@ class MobilityGraphDataset(InMemoryDataset):
         return data_sample
 
     @staticmethod
-    def select_test_node(node_feat, adj, min_lab=0, sampling="uniform"):
+    def node_sampling(
+        label_subset, possible_nodes, nr_sample=1, sampling="balanced"
+    ):
+        if sampling == "balanced":
+            # balanced sampling (each visit number equally likely)
+            uni, counts = np.unique(label_subset, return_counts=True)
+            prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
+            probs = np.array([prob_per_count[l] for l in label_subset])
+            probs = probs / np.sum(probs)
+        elif sampling == "value_based":
+            # scale probability with label (ind of occurence)
+            probs = label_subset / np.sum(label_subset)
+        else:
+            probs = [1 / len(label_subset) for _ in range(len(label_subset))]
+        # sample can be at most all of the possible ones
+        nr_sample = min([nr_sample, len(possible_nodes)])
+        # random choice
+        predict_node = np.random.choice(
+            possible_nodes, size=nr_sample, p=probs, replace=False
+        )
+        return predict_node
+
+    @staticmethod
+    def select_test_node(node_feat, adj, min_lab=0, sampling="balanced"):
+        """sampling: one of balanced, value_based or normal"""
         label_col = node_feat[:, -1]
         # Divide into the known and unkown nodes
         possible_nodes = np.where((label_col >= min_lab) & (label_col <= 1))[0]
@@ -366,26 +391,13 @@ class MobilityGraphDataset(InMemoryDataset):
             # if doesn't work, just pick any (should not happen often)
             predict_node = np.random.randint(0, len(node_feat))
         else:
-            if sampling == "balanced":
-                # balanced sampling (each visit number equally likely)
-                label_subset = label_col[possible_nodes]
-                uni, counts = np.unique(label_subset, return_counts=True)
-                prob_per_count = {
-                    uni[i]: 1 / counts[i] for i in range(len(uni))
-                }
-                probs = np.array([prob_per_count[l] for l in label_subset])
-                probs = probs / np.sum(probs)
-            elif sampling == "value_based":
-                # scale probability with label (ind of occurence)
-                label_subset = label_col[possible_nodes]
-                probs = label_subset / np.sum(label_subset)
-            else:
-                probs = [
-                    1 / len(possible_nodes) for _ in range(len(possible_nodes))
-                ]
-            predict_node = np.random.choice(possible_nodes, p=probs)
+            predict_node = MobilityGraphDataset.node_sampling(
+                label_col[possible_nodes], possible_nodes, sampling=sampling
+            )[0]
+        known_nodes = np.delete(np.arange(len(node_feat)), predict_node)
 
-        known_nodes = [i for i in range(len(node_feat)) if i != predict_node]
+        # get labels back to positive values
+        node_feat[:, -1] = np.abs(node_feat[:, -1])
 
         # restrict feats to known nodes and convert to torch
         known_node_feats = node_feat[known_nodes]
@@ -403,7 +415,7 @@ class MobilityGraphDataset(InMemoryDataset):
 
         # select one node as test node and remove it from the graph
         (adj, known_node_feats, predict_node_feats, _) = self.select_test_node(
-            node_feat, adj
+            node_feat, adj, sampling=self.sampling
         )
 
         # transform to pytorch geometric data

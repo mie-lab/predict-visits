@@ -6,16 +6,20 @@ import pickle
 from collections import defaultdict
 import torch
 
-from predict_visits.model.transforms import NoTransform
 from predict_visits.dataset import MobilityGraphDataset
 from predict_visits.baselines.simple_median import SimpleMedian
 from predict_visits.baselines.knn import KNN
-from predict_visits.utils import load_model
+from predict_visits.utils import load_model, get_visits
 from predict_visits.config import model_dict
 
 
 def node_sampling(
-    node_feats_raw, nr_trials=1, min_label=1, max_label=10, dist_thresh=500
+    node_feats_raw,
+    nr_trials=1,
+    min_label=1,
+    max_label=10,
+    dist_thresh=500,
+    exclude_days=7,
 ):
     """
     Select test node from the (unprocessed) graph for the analysis
@@ -23,31 +27,25 @@ def node_sampling(
     """
     node_feats_raw["artificial_index"] = np.arange(len(node_feats_raw))
     # the test node must fulfill some conditions
+    raw_labels = get_visits(node_feats_raw)
     conditions = (
         (node_feats_raw["distance"] < dist_thresh * 1000)
-        & (node_feats_raw["out_degree"] <= max_label)
-        & (node_feats_raw["out_degree"] >= min_label)
+        & (raw_labels <= max_label)
+        & (raw_labels >= min_label)
+        & (node_feats_raw["occured_after_days"] > exclude_days)
     )
     eligible_rows = node_feats_raw[conditions]
 
     # sample with prob such that label values have same prob to appear
-    nr_visit_col = eligible_rows["out_degree"].values
-    uni, counts = np.unique(nr_visit_col, return_counts=True)
-    assert len(uni) <= (max_label - min_label + 1)
-    prob_per_count = {uni[i]: 1 / counts[i] for i in range(len(uni))}
-    probs = np.array([prob_per_count[l] for l in nr_visit_col])
-
-    # to artificially include always the labels >10:
-    # probs[nr_visit_col > 10] = 1000
-
-    probs = probs / np.sum(probs)
-    # sample
-    test_node_indices = np.random.choice(
-        eligible_rows["artificial_index"].values,
-        size=min([nr_trials, len(eligible_rows)]),
-        p=probs,
-        replace=False,
+    nr_visit_col = get_visits(eligible_rows)
+    possible_nodes_col = eligible_rows["artificial_index"].values
+    test_node_indices = MobilityGraphDataset.node_sampling(
+        nr_visit_col,
+        possible_nodes_col,
+        nr_sample=nr_trials,
+        sampling="balanced",
     )
+
     return test_node_indices
 
 
@@ -65,7 +63,7 @@ def select_node(node_feats_raw, adjacency_raw, take_out_ind):
     adjacency_raw_graph = adjacency_raw_graph[:, use_nodes]
 
     input_node_raw = node_feats_raw.iloc[take_out_ind : take_out_ind + 1]
-    gt_label = input_node_raw["out_degree"].values[0]
+    gt_label = get_visits(input_node_raw)[0]
 
     return node_feats_raw_graph, adjacency_raw_graph, input_node_raw, gt_label
 
@@ -77,6 +75,20 @@ def visit_entropy(visit_numbers, cutoff=10):
     probs = counts / np.sum(counts)
     entropy = -1 * np.sum([p * np.log2(p) for p in probs])
     return entropy
+
+
+def compute_dist_locs(input_node_feats, historic_node_feats):
+    coords_hist = np.array(historic_node_feats[["x_normed", "y_normed"]])
+    coords_input = np.array(input_node_feats[["x_normed", "y_normed"]])
+    dist = np.sqrt(np.sum((coords_hist - coords_input) ** 2, 1))
+    median_dist = np.median(dist)
+    return median_dist
+
+
+def compute_diff_locs(input_node_feats, historic_node_feats):
+    dist = np.sqrt(np.sum((historic_node_feats - input_node_feats) ** 2, 1))
+    median_dist = np.median(dist)
+    return median_dist
 
 
 if __name__ == "__main__":
@@ -116,8 +128,7 @@ if __name__ == "__main__":
 
     # init baselines
     models_to_evaluate = {"simple_median": SimpleMedian()}
-    cfg_to_evaluate = {"simple_median": {}}
-    transform = {}
+    cfg_to_evaluate = {"simple_median": {"include_poi": False}}
 
     # add trained model
     for model_name in os.listdir(os.path.join("trained_models", model_path)):
@@ -127,15 +138,8 @@ if __name__ == "__main__":
         models_to_evaluate[model_name] = model
         cfg_to_evaluate[model_name] = cfg
 
-        # add transform function
-        model_cfg = model_dict[cfg["model"]]
-        transform_for_model = model_cfg.get("inp_transform", NoTransform)
-        transform[model_name] = transform_for_model(**cfg)
-
-        # add knn baselines with these cfgs
-
     # # KNNs for best model comparison
-    cfg_knn = list(cfg_to_evaluate.values())[0]
+    cfg_knn = cfg.copy()  # use last cfg of the models
     models_to_evaluate["knn_5"] = KNN(5, weighted=False)
     cfg_to_evaluate["knn_5"] = cfg_knn
     models_to_evaluate["knn_25"] = KNN(25, weighted=False)
@@ -163,7 +167,7 @@ if __name__ == "__main__":
         adjacency_raw = adjacency_graphs[i]
 
         user_entropy = visit_entropy(
-            node_feats_raw["out_degree"].values, cutoff=MAX_LABEL
+            get_visits(node_feats_raw), cutoff=MAX_LABEL
         )
 
         test_nodes = node_sampling(
@@ -181,18 +185,13 @@ if __name__ == "__main__":
                 gt_label,
             ) = select_node(node_feats_raw, adjacency_raw, take_out_ind)
 
+            # compute difference of sampled node from others:
+            dist_from_locs = compute_dist_locs(input_node_raw, node_feats_raw)
+
             results_by_model = {}
             for model_name, eval_model in models_to_evaluate.items():
                 # get config for preprocessing
                 cfg = cfg_to_evaluate[model_name]
-
-                cfg["include_poi"] = False if "nopoi" in model_name else True
-                cfg["include_time"] = (
-                    True if "starttime" in model_name else False
-                )
-                cfg["include_purpose"] = (
-                    False if "nopurpose" in model_name else True
-                )
 
                 # preprocess graphs manually
                 (
@@ -202,6 +201,8 @@ if __name__ == "__main__":
                 ) = MobilityGraphDataset.graph_preprocessing(
                     adjacency_raw_graph, node_feats_raw_graph, **cfg
                 )
+                # get labels back to positive values
+                node_feat[:, -1] = np.abs(node_feat[:, -1])
 
                 # preprocess labels and upper bound on labels
                 label_cutoff = stats_and_cutoff[1]
@@ -217,6 +218,10 @@ if __name__ == "__main__":
                 input_node, _ = MobilityGraphDataset.node_feature_preprocessing(
                     input_node_raw, stats=stats_and_cutoff[0], **cfg
                 )
+                diff_from_locs = compute_diff_locs(
+                    input_node, node_feat[:, :-1]
+                )
+
                 assert input_node.shape[0] == 1
                 predict_node_feats = np.concatenate(
                     (input_node[0], np.array([0]))
@@ -232,21 +237,20 @@ if __name__ == "__main__":
                     add_batch=True,
                 )
 
-                # final model-dependent transform
-                transform_func = transform.get(model_name, lambda x: x)
-                inp_data = transform_func(data)
-
                 # RUN MODEL
-                lab = data.y[:, -1]
-                pred = eval_model(inp_data)
+                pred = eval_model(data)
 
-                loss = torch.sum((pred - lab) ** 2).item()
+                loss = torch.sum((pred - normed_label) ** 2).item()
 
                 unnormed_pred = MobilityGraphDataset.unnorm_label(
                     pred.item(),
                     label_cutoff,
                     cfg.get("log_labels", False),
                 )
+                # print(model_name)
+                # print("lab", gt_label, normed_label)
+                # print("pred", unnormed_pred, pred)
+                # print()
 
                 error = np.abs(unnormed_pred - gt_label)
 
@@ -259,7 +263,16 @@ if __name__ == "__main__":
                 results_by_model[model_name] = model_res
 
             # add trial to results
-            results.append([users[i], gt_label, results_by_model, user_entropy])
+            results.append(
+                [
+                    users[i],
+                    gt_label,
+                    results_by_model,
+                    user_entropy,
+                    dist_from_locs,
+                    diff_from_locs,
+                ]
+            )
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
 

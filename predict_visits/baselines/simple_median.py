@@ -9,7 +9,7 @@ class SimpleMedian:
     """
 
     def __init__(self, mean=False):
-        self.mean=mean
+        self.mean = mean
 
     def __call__(self, data):
         """
@@ -22,6 +22,6 @@ class SimpleMedian:
 
         if self.mean:
             avg_label = torch.mean(node_features[:, -1])
-        else: 
+        else:
             avg_label = torch.median(node_features[:, -1])
         return avg_label

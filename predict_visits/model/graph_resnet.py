@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.nn.conv import GCNConv, ChebConv
 
+from predict_visits.model.embedding_model import EmbeddingModel
+
 
 class Kipfblock(torch.nn.Module):
     """GCN Block based on Thomas N Kipf and Max Welling,  Semi-supervised
@@ -174,7 +176,7 @@ class GraphResnet(torch.nn.Module):
         return x
 
 
-class VisitPredictionModel(nn.Module):
+class GCNModel(nn.Module):
     def __init__(
         self,
         node_feat_dim,
@@ -182,14 +184,14 @@ class VisitPredictionModel(nn.Module):
         graph_enc_dim=64,
         graph_layers: Union[int, List[int]] = 42,
         graph_k: int = 4,
-        inp_embed_dim=64,
+        inp_embed_dim=32,
         ff_layers: List[int] = [64, 32],
         adj_is_symmetric=True,
         dropout_prob=0,
         **kwargs
     ):
         """Adjecency dim (= number of nodes) only required for autoencoder"""
-        super(VisitPredictionModel, self).__init__()
+        super(GCNModel, self).__init__()
         self.norm = "sym" if adj_is_symmetric else "rw"
         self.dropout_prob = dropout_prob
 
@@ -203,6 +205,7 @@ class VisitPredictionModel(nn.Module):
             p=dropout_prob,
             **kwargs,
         )
+
         # second input processing:
         self.embed_layer = nn.Linear(node_feat_dim - 1, inp_embed_dim)
         # first forward layer
@@ -216,7 +219,7 @@ class VisitPredictionModel(nn.Module):
         self.ff_layers.append(nn.Linear(ff_layers[-1], out_dim))
 
     def forward(self, data):
-        # 1. Graph processing - node embeddings
+
         graph_embed = self.graph_module(data)
         graph_embed = global_mean_pool(graph_embed, data.batch)
 
@@ -243,7 +246,7 @@ if __name__ == "__main__":
 
     dataset = MobilityGraphDataset(["t120_gc2_poi.pkl"])
 
-    model = VisitPredictionModel(25)
+    model = GCNModel(25)
 
     loader = torch_geometric.loader.DataLoader(dataset, batch_size=2)
     counter = 0

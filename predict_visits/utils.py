@@ -3,7 +3,7 @@ import json
 import os
 import torch
 import scipy.sparse as sp
-from predict_visits.model.graph_resnet import VisitPredictionModel
+from predict_visits.model.model_wrapper import ModelWrapper
 from predict_visits.config import model_dict
 
 
@@ -15,10 +15,9 @@ def load_model(model_path):
     # get info which model to use
     cfg_model = model_dict[cfg["model"]]
     NeuralModel = cfg_model["model_class"]
-    cfg_model["model_cfg"]["historic_input"] = cfg.get("historic_input", 7)
 
     # init model
-    model = NeuralModel(cfg["nr_features"], **cfg_model["model_cfg"])
+    model = ModelWrapper(cfg["nr_features"], NeuralModel, **cfg)
 
     # load checkpoint
     model_checkpoint = torch.load(
@@ -53,15 +52,22 @@ def load_model(model_path):
     return model, cfg
 
 
+def get_visits(node_feat_df):
+    return np.max(node_feat_df[["in_degree", "out_degree"]].values, axis=1)
+
+
 def get_home_node(adjacency):
     # find home node
-    out_degrees = np.array(np.sum(adjacency, axis=1))
-    return np.argmax(out_degrees)
+    visit_nr = get_visits_adj(adjacency)
+    return np.argmax(visit_nr)
 
 
-def get_label(adjacency):
+def get_visits_adj(adjacency):
     # get the indegrees
-    return np.array(np.sum(adjacency, axis=0))[0]
+    ind = np.array(np.sum(adjacency, axis=0))[0]
+    # get out degrees
+    outd = np.array(np.sum(adjacency, axis=1)).flatten()
+    return np.max(np.vstack((ind, outd)), axis=0)
 
 
 def normalize_adj(adj):

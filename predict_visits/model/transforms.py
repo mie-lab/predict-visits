@@ -4,7 +4,7 @@ from torch_geometric.utils import to_dense_batch
 
 
 class TransformFF:
-    def __init__(self, historic_input=5, flatten=True, **kwargs):
+    def __init__(self, historic_input=5, flatten=True):
         self.historic_input = historic_input
         self.flatten = flatten
 
