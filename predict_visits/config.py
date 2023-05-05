@@ -34,7 +34,7 @@ model_dict = {
             "nhead": 8,
             "dim_feedforward": 256,
             "dropout": 0.1,
-            "num_layers": 6,
+            "num_layers": 4,
         },
     },
 }
