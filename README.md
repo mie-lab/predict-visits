@@ -1,6 +1,6 @@
 # Visit frequency prediction
 
-This repository contains the code to train neural network models on visit frequency prediction, i.e., predicting the number of future visits to a newly visited location. 
+This repository contains the code to train neural network models on visit frequency prediction, i.e., predicting the number of future visits to a newly visited location. Furthermore, we provide the [appendix to our paper](supplementary_information.pdf) in this repo.
 
 Unfortunately, our analysis is based on propreitary datasets and can therefore not be reproduced without access to the data.
 
