@@ -32,7 +32,7 @@ def node_sampling(
         (node_feats_raw["distance"] < dist_thresh * 1000)
         & (raw_labels <= max_label)
         & (raw_labels >= min_label)
-        & (node_feats_raw["occured_after_days"] > exclude_days)
+        # & (node_feats_raw["occured_after_days"] > exclude_days)
     )
     eligible_rows = node_feats_raw[conditions]
 
@@ -69,9 +69,7 @@ def select_node(node_feats_raw, adjacency_raw, take_out_ind):
 
 
 def visit_entropy(visit_numbers, cutoff=10):
-    uni, counts = np.unique(
-        visit_numbers[visit_numbers <= cutoff], return_counts=True
-    )
+    uni, counts = np.unique(visit_numbers[visit_numbers <= cutoff], return_counts=True)
     probs = counts / np.sum(counts)
     entropy = -1 * np.sum([p * np.log2(p) for p in probs])
     return entropy
@@ -166,9 +164,7 @@ if __name__ == "__main__":
         node_feats_raw = node_feat_list[i]
         adjacency_raw = adjacency_graphs[i]
 
-        user_entropy = visit_entropy(
-            get_visits(node_feats_raw), cutoff=MAX_LABEL
-        )
+        user_entropy = visit_entropy(get_visits(node_feats_raw), cutoff=MAX_LABEL)
 
         test_nodes = node_sampling(
             node_feats_raw,
@@ -198,17 +194,13 @@ if __name__ == "__main__":
                     node_feat,
                     adj,
                     stats_and_cutoff,
-                ) = MobilityGraphDataset.graph_preprocessing(
-                    adjacency_raw_graph, node_feats_raw_graph, **cfg
-                )
+                ) = MobilityGraphDataset.graph_preprocessing(adjacency_raw_graph, node_feats_raw_graph, **cfg)
                 # get labels back to positive values
                 node_feat[:, -1] = np.abs(node_feat[:, -1])
 
                 # preprocess labels and upper bound on labels
                 label_cutoff = stats_and_cutoff[1]
-                normed_label = MobilityGraphDataset.norm_label(
-                    gt_label, label_cutoff, cfg.get("log_labels", False)
-                )
+                normed_label = MobilityGraphDataset.norm_label(gt_label, label_cutoff, cfg.get("log_labels", False))
                 # this can happen (and is not avoidable) since we sample the
                 # new locations from all available locations
                 if normed_label > 1:
@@ -218,14 +210,10 @@ if __name__ == "__main__":
                 input_node, _ = MobilityGraphDataset.node_feature_preprocessing(
                     input_node_raw, stats=stats_and_cutoff[0], **cfg
                 )
-                diff_from_locs = compute_diff_locs(
-                    input_node, node_feat[:, :-1]
-                )
+                diff_from_locs = compute_diff_locs(input_node, node_feat[:, :-1])
 
                 assert input_node.shape[0] == 1
-                predict_node_feats = np.concatenate(
-                    (input_node[0], np.array([0]))
-                )
+                predict_node_feats = np.concatenate((input_node[0], np.array([0])))
 
                 data = MobilityGraphDataset.transform_to_torch(
                     adj,
@@ -276,7 +264,5 @@ if __name__ == "__main__":
         # Visualization:
         # visualize_grid(node_feats[i], inp_adj, inp_graph_nodes)
 
-    with open(
-        os.path.join("outputs", f"results_{args.out_name}.json"), "w"
-    ) as outfile:
+    with open(os.path.join("outputs", f"results_{args.out_name}.json"), "w") as outfile:
         json.dump(results, outfile)
