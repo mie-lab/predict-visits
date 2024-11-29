@@ -8,7 +8,6 @@ import copy
 import json
 import geopandas as gpd
 import psycopg2
-from torch import isin
 from tqdm import tqdm
 from functools import wraps
 from shapely import wkt, wkb
@@ -30,40 +29,44 @@ epsg_for_study = {
     "gc1": 21781,
     "gc2": 21781,
     "yumuv": 21781,
+    "mobis": 21781
 }
 has_trip_dict = {
     "gc1": True,
     "gc2": True,
     "yumuv_graph_rep": True,
     "geolife": True,
+    "mobis": True
 }
 sp_name_dict = {
-    "gc1": "staypoints_extent",
-    "gc2": "staypoints_extent",
+    "gc1": "staypoints",
+    "gc2": "staypoints",
     "yumuv_graph_rep": "staypoints",
     "geolife": "staypoints_extent",
     "tist_toph100": "staypoints_extent",
     "tist_random100": "staypoints",
     "tist_toph1000": "staypoints",
+    "mobis": "staypoints"
 }
 locs_name_dict = {
-    "gc1": "locations_extent",
-    "gc2": "locations_extent",
+    "gc1": "locations",
+    "gc2": "locations",
     "yumuv_graph_rep": "locations",
     "geolife": "locations_extent",
     "tist_toph100": "locations_extent",
     "tist_random100": "locations",
     "tist_toph1000": "locations",
+    "mobis": "locations"
 }
 
 
 def get_con():
-    DBLOGIN_FILE = os.path.join("dblogin.json")
+    DBLOGIN_FILE = os.path.join("../dblogin_mielab.json")
     with open(DBLOGIN_FILE) as json_file:
         LOGIN_DATA = json.load(json_file)
 
     con = psycopg2.connect(
-        dbname=LOGIN_DATA["database"],
+        dbname="graph_data", # LOGIN_DATA["database"],
         user=LOGIN_DATA["user"],
         password=LOGIN_DATA["password"],
         host=LOGIN_DATA["host"],
@@ -108,7 +111,7 @@ def download_data(study, engine, has_trips=True, filter_coverage=False):
     if has_trips:
         print("\t download trips")
         trips = ti.io.read_trips_postgis(
-            f"select * from {study}.trips", con=engine
+            f"select * from {study}.trips", con=engine  #  where user_id='AGIIY'
         )
         if filter_coverage:
             # get_triplegs(study=study, engine=engine)
@@ -184,8 +187,8 @@ def generate_graph(
     # print(sp_user["location_id"])
     # print(locs_user)
     AG = ActivityGraph(
-        sp_user,
         locs_user,
+        sp_user,
         trips=trips_user,
         gap_threshold=gap_threshold,
     )
@@ -378,7 +381,7 @@ if __name__ == "__main__":
         "-b",
         "--one_bin_per_user",
         type=int,
-        default=1,
+        default=0,
         help="set to 0 if one user can appear multiple times",
     )
     args = parser.parse_args()
@@ -386,7 +389,7 @@ if __name__ == "__main__":
     min_nodes = args.node_thresh
     save_name = args.save_name
 
-    studies = ["tist_toph1000", "gc1", "gc2", "yumuv_graph_rep", "geolife"]
+    studies = ["gc1", "gc2", "mobis"]
 
     for study in studies:
         print("--------- Start {} --------------".format(study))
@@ -450,6 +453,11 @@ if __name__ == "__main__":
                     part_start_date,
                     part_end_date,
                     trips_user=trips_user,
+                )
+                print(
+                    "staypoints and trips in time period:", 
+                    len(sp_user_k),
+                    len(trips_user_k)
                 )
                 if len(sp_user_k) == 0:
                     print("Warning: zero staypoints in time bin, continue")
@@ -543,6 +551,6 @@ if __name__ == "__main__":
                     break
 
         with open(
-            os.path.join("data", f"{save_name}_{study}.pkl"), "wb"
+            os.path.join("data/new_2023", f"{save_name}_{study}.pkl"), "wb"
         ) as outfile:
             pickle.dump((user_id_list, adjacency_list, node_feat_list), outfile)
